@@ -1,6 +1,11 @@
 /* ===========================
-   DONNÉES ÉTUDIANTS
+   UTILISATEURS
    =========================== */
+
+const users = {
+    'professeur': { password: 'ensa2024', name: 'Professeur' },
+    'admin': { password: 'admin123', name: 'Administrateur' }
+};
 
 const etudiants = {
     isdia: [
@@ -44,9 +49,28 @@ const etudiants = {
 // STOCKAGE DES DONNÉES
 // ===========================
 
-const donnees = {
-    absences: {} // Structure: { "filiere_semaine_num": "present|absent" }
-};
+let donnees = { absences: {} };
+
+// Charger les données depuis DONNEES.json
+async function loadData() {
+    const currentUser = sessionStorage.getItem('current_user');
+    if (!currentUser) return;
+
+    try {
+        // Charger depuis localStorage pour persister par utilisateur
+        const savedData = localStorage.getItem('donnees_' + currentUser);
+        if (savedData) {
+            donnees = JSON.parse(savedData);
+        } else {
+            donnees = { absences: {} };
+        }
+        // Sauvegarder dans sessionStorage pour la session
+        sessionStorage.setItem('donnees', JSON.stringify(donnees));
+    } catch (error) {
+        console.error('Erreur lors du chargement des données:', error);
+        donnees = { absences: {} };
+    }
+}
 
 // ===========================
 // FONCTIONS INITIALISATION
@@ -55,13 +79,19 @@ const donnees = {
 /**
  * Initialiser l'application au chargement de la page
  */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadData();
+    
+    // Initialiser pour la page gestion (présences)
+    if (document.getElementById('semaineSelect')) {
+        initializeWeeks();
+    }
+
     // Vérifier l'authentification sur la page gestion
-    if (window.location.pathname.includes('gestion.html')) {
+    if (document.getElementById('semaineSelect')) {
         if (!sessionStorage.getItem('user_logged_in')) {
             window.location.href = 'login.html';
         }
-        initializeWeeks();
     }
 
     // Initialiser le formulaire de connexion
@@ -71,18 +101,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Attacher l'événement de connexion immédiatement si on est sur la page de login
+if (document.getElementById('loginForm')) {
+    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+}
+
 /**
  * Initialiser les semaines disponibles
  */
 function initializeWeeks() {
+    console.log('Initialisation des semaines...');
     const semaineSelect = document.getElementById('semaineSelect');
+    console.log('Élément semaineSelect:', semaineSelect);
+    
     if (semaineSelect) {
+        // Vider les options existantes sauf la première
+        while (semaineSelect.options.length > 1) {
+            semaineSelect.remove(1);
+        }
+        
         for (let i = 1; i <= 12; i++) {
             const option = document.createElement('option');
             option.value = i;
             option.textContent = `Semaine ${i}`;
             semaineSelect.appendChild(option);
+            console.log(`Ajout semaine ${i}`);
         }
+        console.log('Semaines ajoutées avec succès');
+    } else {
+        console.error('Élément semaineSelect non trouvé');
     }
 }
 
@@ -96,27 +143,34 @@ function initializeWeeks() {
 function handleLogin(e) {
     e.preventDefault();
 
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
     const errorMessage = document.getElementById('errorMessage');
 
-    // Validation simple
-    if (!email.endsWith('@ensa.ma')) {
-        errorMessage.textContent = '❌ L\'email doit se terminer par @ensa.ma';
+    console.log('Tentative de connexion:', username, password);
+    console.log('Utilisateurs disponibles:', Object.keys(users));
+
+    // Vérifier les identifiants
+    if (!users[username]) {
+        console.log('Utilisateur non trouvé:', username);
+        errorMessage.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
         errorMessage.style.display = 'block';
         return;
     }
 
-    if (password.length < 4) {
-        errorMessage.textContent = '❌ Le mot de passe doit contenir au moins 4 caractères';
+    if (users[username].password !== password) {
+        console.log('Mot de passe incorrect pour:', username);
+        errorMessage.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
         errorMessage.style.display = 'block';
         return;
     }
+
+    console.log('Connexion réussie pour:', username);
 
     // Authentification réussie
     errorMessage.style.display = 'none';
     sessionStorage.setItem('user_logged_in', 'true');
-    sessionStorage.setItem('user_email', email);
+    sessionStorage.setItem('current_user', username);
 
     // Redirection après 500ms
     setTimeout(() => {
@@ -129,8 +183,9 @@ function handleLogin(e) {
  */
 function logout() {
     sessionStorage.removeItem('user_logged_in');
+    sessionStorage.removeItem('current_user');
     sessionStorage.removeItem('user_email');
-    window.location.href = 'index.html';
+    window.location.href = 'login.html';
 }
 
 // ===========================
@@ -217,7 +272,12 @@ function setStatus(filiere, semaine, num, status) {
     const key = `${filiere}_${semaine}_${num}`;
     donnees.absences[key] = status;
 
-    // Mettre à jour SessionStorage
+    // Sauvegarder en localStorage pour persister par utilisateur
+    const currentUser = sessionStorage.getItem('current_user');
+    if (currentUser) {
+        localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+    }
+    // Aussi dans sessionStorage pour la session
     sessionStorage.setItem('donnees', JSON.stringify(donnees));
 
     // Mettre à jour les boutons visuels
@@ -264,6 +324,108 @@ function resetData() {
         });
         updateTableau();
     }
+}
+
+// ===========================
+// IMPORT .DAT
+// ===========================
+
+/**
+ * Importer les données depuis un fichier .dat ZKTeco
+ */
+function importDAT() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaine = document.getElementById('semaineSelect').value;
+
+    if (!filiere || !semaine) {
+        alert('Veuillez sélectionner une filière et une semaine avant d\'importer');
+        return;
+    }
+
+    // Créer un input file caché
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dat';
+    input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                parseDATFile(content, filiere, semaine);
+            };
+            reader.readAsText(file);
+        }
+    };
+    input.click();
+}
+
+/**
+ * Parser le contenu du fichier .dat
+ */
+function parseDATFile(content, filiere, semaine) {
+    const lines = content.split('\n');
+    let importedCount = 0;
+    let invalidCount = 0;
+
+    lines.forEach(line => {
+        line = line.trim();
+        if (!line) return;
+
+        // Assumer format simple: numéro d'étudiant par ligne (présents)
+        const studentNum = parseInt(line);
+        if (isNaN(studentNum)) {
+            invalidCount++;
+            return;
+        }
+
+        // Vérifier si l'utilisateur existe dans la filière
+        const students = etudiants[filiere];
+        const student = students.find(s => s.num == studentNum);
+        if (!student) {
+            invalidCount++;
+            return;
+        }
+
+        // Marquer comme présent
+        const key = `${filiere}_${semaine}_${student.num}`;
+        donnees.absences[key] = 'present';
+        importedCount++;
+    });
+
+    // Marquer les étudiants absents (ceux qui ne figurent pas dans le fichier)
+    const students = etudiants[filiere];
+    students.forEach(student => {
+        const key = `${filiere}_${semaine}_${student.num}`;
+        if (donnees.absences[key] !== 'present') {
+            donnees.absences[key] = 'absent';
+        }
+    });
+
+    // Sauvegarder en localStorage pour persister par utilisateur
+    const currentUser = sessionStorage.getItem('current_user');
+    if (currentUser) {
+        localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+    }
+    // Aussi dans sessionStorage pour la session
+    sessionStorage.setItem('donnees', JSON.stringify(donnees));
+
+    // Mettre à jour l'affichage
+    updateTableau();
+    updateStatistics();
+
+    alert(`Import terminé: ${importedCount} présences importées, ${invalidCount} enregistrements invalides ignorés.`);
+}
+
+/**
+ * Obtenir le numéro de semaine dans l'année
+ */
+function getWeekOfYear(date) {
+    const start = new Date(date.getFullYear(), 0, 1);
+    const diff = date - start;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    return Math.floor(dayOfYear / 7) + 1;
 }
 
 // ===========================
