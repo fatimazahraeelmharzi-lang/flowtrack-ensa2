@@ -353,7 +353,7 @@ html {
     margin-bottom: 2.5rem;
 }
 
-.login-header h2 {
+.login-header h1 {
     color: var(--bleu-fonce);
     font-size: 1.8rem;
     margin-bottom: 0.5rem;
@@ -396,7 +396,7 @@ html {
     color: #BDBDBD;
 }
 
-.btn-login {
+.login-btn {
     width: 100%;
     padding: 1rem;
     background: linear-gradient(135deg, var(--bleu-clair), var(--bleu));
@@ -410,12 +410,12 @@ html {
     margin-top: 1rem;
 }
 
-.btn-login:hover {
+.login-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 25px rgba(74, 144, 226, 0.3);
 }
 
-.btn-login:active {
+.login-btn:active {
     transform: translateY(0);
 }
 
