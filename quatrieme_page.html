@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistiques étudiant — Détail</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/quatrieme_page.css">
+</head>
+<body>
+
+    <!-- NAVBAR (conforme au site) -->
+    <nav class="navbar">
+        <div class="navbar-logo">ENSA Fès</div>
+        <div class="navbar-nav">
+            <a href="gestion.html">Retour</a>
+            <a href="#" onclick="logout()">DÃ©connexion</a>
+        </div>
+    </nav>
+
+    <div class="gestion-container">
+        <div class="gestion-header">
+            <div class="header-content">
+                <h1>Statistiques détaillées</h1>
+                <p class="header-subtitle">Détail d'un étudiant</p>
+            </div>
+        </div>
+
+        <div class="detail-content container">
+            <div class="card detail-card">
+                <div class="card-body">
+                    <h3 id="studentName">—</h3>
+                    <div class="stats-row">
+                        <div class="stat small">Total séances<br><span id="totalSeances">0</span></div>
+                        <div class="stat small">Présences<br><span id="presences">0</span></div>
+                        <div class="stat small">Absences<br><span id="absences">0</span></div>
+                        <div class="stat small">Taux<br><span id="taux">0%</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-row">
+                <div class="card chart-card">
+                    <div class="card-body">
+                        <h4>Répartition</h4>
+                        <canvas id="presenceChart"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <div class="card-body">
+                        <h4>Évolution par semaine</h4>
+                        <canvas id="evolutionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card history-card">
+                <div class="card-body">
+                    <h4>Historique détaillé</h4>
+                    <table class="attendance-table" id="detailTable">
+                        <thead>
+                            <tr><th>Semaine</th><th>Statut</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="errorMsg" class="error-message" style="display:none;">Étudiant introuvable ou paramètres manquants.</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="js/script.js"></script>
+    <script src="js/quatrieme_page.js"></script>
+</body>
+</html>

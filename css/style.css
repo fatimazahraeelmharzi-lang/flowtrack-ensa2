@@ -179,6 +179,19 @@ html {
     transform: translateY(-4px);
 }
 
+/* Bouton détail pour la table (harmonisé) */
+.btn-detail {
+    background: var(--bleu);
+    color: var(--blanc);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-detail:hover { background: var(--bleu-clair); }
+
 .btn-icon {
     font-size: 2.5rem;
     display: flex;

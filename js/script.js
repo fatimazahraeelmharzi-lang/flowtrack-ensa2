@@ -255,8 +255,9 @@ function updateTableau() {
                         ✗ Absent
                     </button>
                 </div>
-            </td>
-        `;
+            </td>            <td>
+                <button class="btn-detail btn-secondary" onclick="openDetail('${filiere}', ${student.num})">DÃ©tail</button>
+            </td>        `;
 
         tableBody.appendChild(row);
     });
@@ -510,4 +511,9 @@ function exportToPDF() {
  */
 function printPDF() {
     window.print();
+}
+
+// Ouvrir la page de dÃ©tail pour un Ã©tudiant (filiÃ¨re + num)
+function openDetail(filiere, num) {
+    window.location.href = `quatrieme_page.html?filiere=${filiere}&num=${num}`;
 }
