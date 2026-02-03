@@ -900,6 +900,21 @@ function saveLocalStudent(student) {
             if (!etudiants[assigned.filiere]) etudiants[assigned.filiere] = [];
             etudiants[assigned.filiere].push({ num: assigned.num, nom: assigned.nom.toUpperCase(), prenom: assigned.prenom });
         }
+
+        // Best-effort: try to create the same student on the server so registration is shared
+        (async () => {
+            try {
+                const resp = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId }) });
+                if (resp.ok) {
+                    const j = await resp.json();
+                    if (j.student && j.student.id && assigned.num) {
+                        // Optionally map back the server id if needed
+                        assigned.id = j.student.id;
+                        localStorage.setItem(key, JSON.stringify(arr));
+                    }
+                }
+            } catch (e) { /* ignore offline errors */ }
+        })();
     } catch (e) {
         console.error('Failed to save local student', e);
     }
