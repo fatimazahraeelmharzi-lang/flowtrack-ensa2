@@ -339,13 +339,34 @@ async function handleApiGetPresences(req, res, query) {
 }
 
 function sessionSafeResponse(res, status, payload) {
-    // minimal wrapper to send JSON
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    // minimal wrapper to send JSON and CORS headers
+    res.writeHead(status, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    });
     res.end(JSON.stringify(payload));
+}
+
+// Handle preflight CORS for API endpoints
+function handleOptions(req, res) {
+    res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    });
+    res.end();
 }
 
 const server = http.createServer((req, res) => {
     const parsed = url.parse(req.url, true);
+
+    // Preflight CORS for API
+    if (parsed.pathname && parsed.pathname.startsWith('/api') && req.method === 'OPTIONS') {
+        handleOptions(req, res);
+        return;
+    }
+
     // API routes
     if (parsed.pathname === '/api/signup' && req.method === 'POST') {
         handleApiSignup(req, res);
