@@ -36,4 +36,4 @@ jobs:
 
       - name: Notify if no Render secrets
         if: ${{ !secrets.RENDER_API_KEY || !secrets.RENDER_SERVICE_ID }}
-        run: echo "RENDER_API_KEY or RENDER_SERVICE_ID not provided — the workflow completed but did not trigger a Render deploy. Add secrets in repo settings to enable automatic deploys.''
+        run: echo "RENDER_API_KEY or RENDER_SERVICE_ID not provided — the workflow completed but did not trigger a Render deploy. Add secrets in repo settings to enable automatic deploys."
