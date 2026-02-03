@@ -13,6 +13,7 @@
         <div class="navbar-logo">ENSA Fès</div>
         <div class="navbar-nav">
             <a href="#" onclick="logout()">Déconnexion</a>
+            <span id="navUser" style="margin-left:12px; font-weight:600; color:#083; display:none;"></span>
         </div>
     </nav>
 
@@ -80,6 +81,12 @@
                 </div>
             </div>
 
+            <!-- Module display: shows module(s) for connected professor per filiere -->
+            <div style="margin:12px 0; display:flex; gap:12px; align-items:center;">
+                <label>Module: <span id="moduleLabel" style="font-weight:600;">—</span></label>
+                <small id="moduleNote" style="color:#666;">Module attribué au professeur connecté pour la filière sélectionnée.</small>
+            </div>
+
             <!-- TABLEAU -->
             <div id="tableContainer" style="display: none;">
                 <h2 style="margin-bottom: 1.5rem; color: var(--bleu-fonce);">
@@ -90,10 +97,12 @@
                     <table class="attendance-table" id="attendanceTable">
                         <thead>
                             <tr>
-                                <th>N°</th>
-                                <th>Nom</th>
-                                <th>Prénom</th>
-                                <th>Statut</th>                                <th>DÃ©tail</th>                            </tr>
+                                    <th>N°</th>
+                                    <th>Nom</th>
+                                    <th>Prénom</th>
+                                    <th>Statut</th>
+                                    <th>Détail</th>
+                            </tr>
                         </thead>
                         <tbody id="tableBody">
                             <!-- Données JS -->
@@ -159,4 +168,19 @@
 
 </body>
 </html>
+
+<!-- Student history modal (rendered for professors) -->
+<div id="studentHistoryModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <button class="modal-close" id="modalCloseBtn">×</button>
+        <h3 id="modalStudentName">Historique étudiant</h3>
+        <p><strong>Filière:</strong> <span id="modalFiliere">-</span> &nbsp; <strong>N°</strong> <span id="modalNum">-</span></p>
+        <div class="modal-body">
+            <table class="attendance-table" id="modalHistoryTable">
+                <thead><tr><th>Semaine</th><th>Statut</th><th>Module</th><th>Enseignant</th></tr></thead>
+                <tbody id="modalHistoryBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
 

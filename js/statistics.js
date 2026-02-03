@@ -119,7 +119,8 @@ function calculateStatistics(filiere, semaine, absenceData) {
         
         if (keyFiliere === filiere && keySemaine === semaine) {
             totalStudents++;
-            const status = donnees.absences[key];
+            const rawStatus = donnees.absences[key];
+            const status = (rawStatus && typeof rawStatus === 'string') ? rawStatus : (rawStatus && rawStatus.statut ? rawStatus.statut : rawStatus);
             console.log(`${key}: ${status}`);
             
             if (status === 'present') {

@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "nom": "Test",
+    "prenom": "Etudiant",
+    "email_academique": "test@usmba.ac.ma",
+    "num": 1,
+    "filiere": "info",
+    "code": "1234",
+    "deviceId": "DEVICE_TEST"
+  }
+]

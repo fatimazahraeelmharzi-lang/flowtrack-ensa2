@@ -345,6 +345,13 @@ html {
     width: 100%;
     max-width: 450px;
     padding: 3rem;
+    /* ensure header is visible (not covered by fixed navbar) and keep content near top */
+    min-height: 55vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    margin-top: 48px; /* leave space below fixed navbar */
+    padding-top: 1.5rem;
     position: relative;
     z-index: 2;
     animation: slideUp 0.6s ease;
@@ -638,6 +645,39 @@ html {
     font-size: 0.95rem;
 }
 
+#studentDashboard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem; /* reduce spacing so table is closer to name */
+}
+
+/* Student detail table: center columns and allow wrapping to avoid misalignment */
+#studentDashboard .attendance-table th,
+#studentDashboard .attendance-table td {
+    text-align: center;
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* Ensure the student table stays centered and columns align */
+#studentDashboard .attendance-table {
+    width: 100%;
+    max-width: 520px;
+    margin: 0.4rem auto 0.6rem auto; /* bring table closer to header/name */
+    table-layout: fixed;
+    overflow: visible;
+}
+
+#studentDashboard .attendance-table th:nth-child(1),
+#studentDashboard .attendance-table td:nth-child(1) { width: 20%; }
+#studentDashboard .attendance-table th:nth-child(2),
+#studentDashboard .attendance-table td:nth-child(2) { width: 20%; }
+#studentDashboard .attendance-table th:nth-child(3),
+#studentDashboard .attendance-table td:nth-child(3) { width: 30%; }
+#studentDashboard .attendance-table th:nth-child(4),
+#studentDashboard .attendance-table td:nth-child(4) { width: 30%; }
+
 .numero-col {
     font-weight: 600;
     color: var(--bleu-fonce);
@@ -807,6 +847,41 @@ html {
         font-size: 0.8rem;
     }
 }
+
+/* Modal for student history */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1rem;
+}
+.modal-content {
+    background: var(--blanc);
+    border-radius: 10px;
+    max-width: 720px;
+    width: 100%;
+    padding: 1.2rem 1.4rem;
+    box-shadow: var(--ombre);
+    position: relative;
+}
+.modal-close {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+}
+.modal-body { max-height: 60vh; overflow:auto; margin-top:0.6rem; }
+.modal .attendance-table { width:100%; table-layout: auto; }
 
 /* ===========================
    IMPRESSION PDF
