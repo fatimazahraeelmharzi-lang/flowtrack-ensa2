@@ -257,12 +257,30 @@ async function handleLogin(e) {
             return;
         }
 
-        // If server responded but credentials invalid, show message from server or default message
-        if (!res.ok || (data && data.ok === false)) {
-            errorMessage.textContent = (data && data.error) ? data.error : 'Nom d\'utilisateur ou mot de passe incorrect';
+        // Server responded but rejected credentials (e.g., 401). Attempt local fallback for known local accounts.
+        const serverMessage = (data && data.error) ? data.error : 'Nom d\'utilisateur ou mot de passe incorrect';
+        if (res.status === 401 || (res.ok && data && data.ok === false)) {
+            const local = users[username];
+            if (local && local.password === password) {
+                console.log('Login: server rejected credentials but local fallback succeeded for', username);
+                errorMessage.style.display = 'none';
+                sessionStorage.setItem('user_logged_in', 'true');
+                sessionStorage.setItem('current_user', username);
+                sessionStorage.setItem('current_user_display', local.name || username);
+                sessionStorage.setItem('current_user_modules', JSON.stringify(local.modules || {}));
+                setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+                return;
+            }
+            // No local fallback; show server message
+            errorMessage.textContent = serverMessage;
             errorMessage.style.display = 'block';
             return;
         }
+
+        // Other server-side failure: show the message
+        errorMessage.textContent = serverMessage;
+        errorMessage.style.display = 'block';
+        return;
 
     } catch (e) {
         // Network/connection error -> try local fallback
