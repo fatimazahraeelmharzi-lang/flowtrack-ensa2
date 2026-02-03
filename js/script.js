@@ -57,8 +57,42 @@ const etudiants = {
 
 // Exposer la liste des étudiants globalement pour les autres pages
 window.etudiants = etudiants;
-// API base for server (fallback to localhost when opened from file://)
-const API_BASE = (window.location.protocol === "file:") ? "http://localhost:3005" : "";
+// API base for server (configurable via js/config.js -> window.API_BASE_URL)
+const API_BASE = (typeof window.API_BASE_URL !== 'undefined' && window.API_BASE_URL) ? window.API_BASE_URL : ((window.location.protocol === "file:") ? "http://localhost:3005" : "");
+
+// Charger la liste des professeurs depuis /data/teachers.json (utile pour site statique)
+(async function loadTeachers() {
+    try {
+        const resp = await fetch('/data/teachers.json');
+        if (resp.ok) {
+            const list = await resp.json();
+            window.TEACHERS = list || [];
+            // If no runtime TEACHER_CREDENTIALS defined, use first teacher as fallback
+            if ((!window.TEACHER_CREDENTIALS || !window.TEACHER_CREDENTIALS.username) && Array.isArray(list) && list.length) {
+                const t = list[0];
+                window.TEACHER_CREDENTIALS = window.TEACHER_CREDENTIALS || {};
+                window.TEACHER_CREDENTIALS.username = t.username || (t.nom ? (t.nom.toLowerCase()) : 'professeur');
+                window.TEACHER_CREDENTIALS.email = t.email || '';
+                // keep default password if not provided
+                window.TEACHER_CREDENTIALS.password = window.TEACHER_CREDENTIALS.password || 'ensa2024';
+                window.TEACHER_CREDENTIALS.name = (t.nom && t.prenom) ? (t.nom + ' ' + t.prenom) : (t.nom || t.prenom || window.TEACHER_CREDENTIALS.name);
+                window.TEACHER_CREDENTIALS.modules = t.modules || window.TEACHER_CREDENTIALS.modules || {};
+            }
+        }
+    } catch (e) {
+        // Ignore if file not present (older setups)
+    }
+})();
+
+// Override local teacher credentials from runtime config (js/config.js)
+try {
+    if (window.TEACHER_CREDENTIALS && window.TEACHER_CREDENTIALS.username) {
+        const t = window.TEACHER_CREDENTIALS;
+        const baseModules = (users['professeur'] && users['professeur'].modules) ? users['professeur'].modules : {};
+        users[t.username] = { password: t.password || 'ensa2024', name: t.name || t.username, modules: t.modules || baseModules };
+        if (t.username !== 'professeur' && users['professeur']) delete users['professeur'];
+    }
+} catch (e) { /* ignore if config not present */ }
 
 // ===========================
 // STOCKAGE DES DONNÉES
@@ -895,16 +929,28 @@ async function handleSignupSubmit(e) {
         if (msg) { msg.style.display='block'; msg.textContent='Utilisez une adresse usmba.ac.ma'; }
         return;
     }
+    // If no API backend is configured (GitHub Pages static), save locally and skip network
+    const payload = { nom, prenom, num, filiere, email_academique: email, code, deviceId };
+    if (!API_BASE) {
+        saveLocalStudent(payload);
+        if (msg) { msg.style.display='block'; msg.textContent = 'Inscription enregistrée localement (site statique).'; }
+        setTimeout(() => {
+            const modal = document.getElementById('signupModal');
+            if (modal) { closeSignupModal(); } else { window.location.href = 'student.html'; }
+        }, 900);
+        return;
+    }
 
+    // Otherwise try to call the API and fall back to local if it fails
     try {
         const res = await fetch(API_BASE + '/api/signup', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nom, prenom, num, filiere, email_academique: email, code, deviceId })
+            body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             // Fallback: save locally so student can see account immediately
-            saveLocalStudent({ nom, prenom, num, filiere, email_academique: email, code, deviceId });
+            saveLocalStudent(payload);
             if (msg) { msg.style.display='block'; msg.textContent = data.error || 'Inscription enregistrée localement.'; }
             setTimeout(() => { closeSignupModal(); }, 900);
             return;
@@ -912,13 +958,12 @@ async function handleSignupSubmit(e) {
 
         if (msg) { msg.style.display='block'; msg.style.color='#080'; msg.textContent = 'Inscription réussie.'; }
         setTimeout(() => {
-            // If modal exists, close it; otherwise redirect back to student login
             const modal = document.getElementById('signupModal');
             if (modal) { closeSignupModal(); } else { window.location.href = 'student.html'; }
         }, 900);
     } catch (err) {
         // Network error: persist locally so the user can continue
-        saveLocalStudent({ nom, prenom, num, filiere, email_academique: email, code, deviceId });
+        saveLocalStudent(payload);
         if (msg) { msg.style.display='block'; msg.textContent='Inscription enregistrée localement (offline).'; }
         setTimeout(() => {
             const modal = document.getElementById('signupModal');
@@ -948,19 +993,21 @@ function saveLocalStudent(student) {
         }
 
         // Best-effort: try to create the same student on the server so registration is shared
-        (async () => {
-            try {
-                const resp = await fetch(API_BASE + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId }) });
-                if (resp.ok) {
-                    const j = await resp.json();
-                    if (j.student && j.student.id && assigned.num) {
-                        // Optionally map back the server id if needed
-                        assigned.id = j.student.id;
-                        localStorage.setItem(key, JSON.stringify(arr));
-                    }
-                }
-            } catch (e) { /* ignore offline errors */ }
-        })();
+            // If an API is configured, try to sync; otherwise skip network (static site)
+            if (API_BASE) {
+                (async () => {
+                    try {
+                        const resp = await fetch(API_BASE + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId, code: assigned.code }) });
+                        if (resp.ok) {
+                            const j = await resp.json().catch(() => ({}));
+                            if (j.student && j.student.id && assigned.num) {
+                                assigned.id = j.student.id;
+                                localStorage.setItem(key, JSON.stringify(arr));
+                            }
+                        }
+                    } catch (e) { /* ignore offline errors */ }
+                })();
+            }
     } catch (e) {
         console.error('Failed to save local student', e);
     }
