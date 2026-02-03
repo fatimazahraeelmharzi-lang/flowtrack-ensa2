@@ -147,9 +147,30 @@ python -m http.server 8000
 
 ## 💾 Stockage des Données
 
-- Les absences sont stockées en **sessionStorage** du navigateur
-- Les données sont perdues à la fermeture du navigateur
-- Pour persistence : implémenter une base de données
+- Par défaut l'application utilisait **localStorage/sessionStorage** locale (non partagé entre machines).
+- J'ai ajouté une **API serveur** (Node.js) et une **table PostgreSQL** (`utilisateurs`, `presences`) pour stocker **inscriptions** et **présences** de façon centralisée.
+- Les inscriptions `POST /api/signup` et les présences `POST /api/presence` sont maintenant persistées dans la base de données PostgreSQL si `DATABASE_URL` est configurée.
+
+### Lancer en local (Node.js)
+1. Installer les dépendances :
+
+```bash
+npm install
+```
+
+2. Démarrer le serveur (écoute sur le port 3005) :
+
+```bash
+npm start
+```
+
+3. Accéder à l'interface :
+
+- Frontend statique : `http://localhost:8000` (ou ouvrez `index.html`) 
+- API serveur (backend) : `http://localhost:3005`
+
+> Si vous déployez, assurez-vous de définir `DATABASE_URL` pour que le serveur écrive dans PostgreSQL.
+
 
 ## 🐛 Dépannage
 
