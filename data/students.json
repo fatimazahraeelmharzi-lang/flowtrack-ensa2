@@ -8,5 +8,14 @@
     "filiere": "info",
     "code": "1234",
     "deviceId": "DEVICE_TEST"
+  },
+  {
+    "id": 1770140120341,
+    "nom": "New",
+    "prenom": "Student",
+    "email_academique": "newstudent@usmba.ac.ma",
+    "num": "42",
+    "filiere": "info",
+    "deviceId": null
   }
 ]
