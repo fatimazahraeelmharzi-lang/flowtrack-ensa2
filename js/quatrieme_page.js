@@ -1,0 +1,133 @@
+// Lire les paramètres d'URL
+function getQueryParams() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        filiere: params.get('filiere'),
+        num: params.get('num') ? parseInt(params.get('num')) : null
+    };
+}
+
+function initDetail() {
+    const { filiere, num } = getQueryParams();
+    const errorEl = document.getElementById('errorMsg');
+    if (!filiere || !num || !window.donnees) {
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // Try to find student in global `etudiants` first, then in localStorage registered students
+    let student = null;
+    try {
+        if (window.etudiants && etudiants[filiere]) {
+            student = etudiants[filiere].find(s => String(s.num) === String(num));
+        }
+    } catch (e) { /* ignore */ }
+
+    if (!student) {
+        try {
+            const local = JSON.parse(localStorage.getItem('local_students') || '[]');
+            student = local.find(s => String(s.num) === String(num) && s.filiere && s.filiere.toLowerCase() === String(filiere).toLowerCase());
+            if (student) {
+                // Normalize names
+                student.nom = student.nom || (student.Nom || '');
+                student.prenom = student.prenom || (student.Prenom || '');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    if (!student) { errorEl.style.display = 'block'; return; }
+
+    document.getElementById('studentName').textContent = `${student.prenom} ${student.nom}`;
+
+    // Statistiques sur 12 semaines
+    const totalWeeks = 12;
+    let presences = 0;
+    let absences = 0;
+    const labels = [];
+    const statusData = [];
+
+    const tbody = document.querySelector('#detailTable tbody');
+    tbody.innerHTML = '';
+    for (let w = 1; w <= totalWeeks; w++) {
+        const key = `${filiere}_${w}_${num}`;
+            const raw = (donnees && donnees.absences) ? donnees.absences[key] : undefined;
+            let statut = undefined, moduleName = '', teacherName = '';
+            if (raw) {
+                if (typeof raw === 'string') statut = raw;
+                else if (raw.statut) statut = raw.statut;
+                if (raw.module) moduleName = raw.module;
+                if (raw.teacher) teacherName = raw.teacher;
+            }
+            // Fallbacks: default module per filiere and teacher from session if missing
+            if (!moduleName) moduleName = (function(){ const dflt = { isdia: 'Algèbre' }; return dflt[filiere] || 'Analyse'; })();
+            if (!teacherName) teacherName = sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '';
+            labels.push(`S${w}`);
+            if (statut === 'present') { presences++; statusData.push(1); }
+            else if (statut === 'absent') { absences++; statusData.push(0); }
+            else { statusData.push(null); }
+
+        const tr = document.createElement('tr');
+            const statutHtml = (statut === 'present') ? '<span class="badge present">Présent</span>' : (statut === 'absent' ? '<span class="badge absent">Absent</span>' : '<span class="badge neutral">Non renseigné</span>');
+            tr.innerHTML = `<td>Semaine ${w}</td><td>${statutHtml}</td><td>${moduleName}</td><td>${teacherName}</td>`;
+        tbody.appendChild(tr);
+    }
+
+    const total = presences + absences;
+    const taux = total > 0 ? Math.round((presences / total) * 100) : 0;
+
+    document.getElementById('totalSeances').textContent = total;
+    document.getElementById('presences').textContent = presences;
+    document.getElementById('absences').textContent = absences;
+    document.getElementById('taux').textContent = taux + '%';
+
+    // Donut chart
+    if (window.presenceChartObj) window.presenceChartObj.destroy();
+    const ctx = document.getElementById('presenceChart').getContext('2d');
+    window.presenceChartObj = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels: ['Présences', 'Absences'], datasets: [{ data: [presences, absences], backgroundColor: ['#28a745','#dc3545'] }] },
+        options: { responsive: true }
+    });
+
+    // Evolution: bar for weekly presence + line for cumulative
+    const cumData = [];
+    statusData.forEach((v, i) => { const val = (v === 1 ? 1 : 0); cumData[i] = (i === 0 ? val : (cumData[i-1] + val)); });
+
+    if (window.evolutionChartObj) window.evolutionChartObj.destroy();
+    const ctx2 = document.getElementById('evolutionChart').getContext('2d');
+    window.evolutionChartObj = new Chart(ctx2, {
+        data: {
+            labels: labels,
+            datasets: [
+                { type: 'bar', label: 'Présence (hebdo)', data: statusData, backgroundColor: statusData.map(s => s ? '#28a745' : '#dc3545'), yAxisID: 'y' },
+                { type: 'line', label: 'Cumul', data: cumData, fill: false, borderColor: '#0B3C5D', backgroundColor: 'rgba(11,60,93,0.06)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                y: { beginAtZero: true, max: 1, ticks: { stepSize: 1 } },
+                y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
+            }
+        }
+    });
+}
+
+// Attendre que script.js ait initialisé les données (loadData)
+    document.addEventListener('DOMContentLoaded', () => {
+        // Allow access for professors (`user_logged_in`) or students (`current_user`)
+        if (!sessionStorage.getItem('user_logged_in') && !sessionStorage.getItem('current_user')) {
+            window.location.href = 'login.html';
+            return;
+        }
+
+        // If data already loaded
+        if (window.donnees && window.donnees.absences) {
+            initDetail();
+        }
+
+        // Listen for data readiness/changes
+        window.addEventListener('donneesLoaded', initDetail);
+        window.addEventListener('donneesUpdated', initDetail);
+    });

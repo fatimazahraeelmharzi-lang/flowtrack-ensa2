@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - ENSA Fès</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- BARRE DE NAVIGATION -->
+    <nav class="navbar">
+        <div class="navbar-logo">ENSA Fès</div>
+        <div class="navbar-nav">
+            <a href="index.html">Accueil</a>
+        </div>
+    </nav>
+
+    <!-- CONTENEUR DE CONNEXION -->
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h2>Connexion</h2>
+                <p>FlowTrack : Automatiser, organiser, réussir</p>
+            </div>
+
+            <form id="loginForm">
+                <!-- MESSAGE D'ERREUR -->
+                <div id="errorMessage" class="error-message" style="display:none;"></div>
+
+                <!-- CHAMP USERNAME -->
+                <div class="form-group">
+                    <label for="username">Nom d'utilisateur</label>
+                    <input
+                        type="text"
+                        id="username"
+                        placeholder="professeur ou admin"
+                        required
+                    >
+                </div>
+
+                <!-- CHAMP MOT DE PASSE -->
+                <div class="form-group">
+                    <label for="password">Mot de passe</label>
+                    <input
+                        type="password"
+                        id="password"
+                        placeholder="••••••••"
+                        required
+                    >
+                </div>
+
+                <!-- BOUTON CONNEXION -->
+                <button type="submit" class="btn-login">
+                    Se connecter
+                </button>
+            </form>
+
+            <!-- RETOUR -->
+            <div style="text-align:center; margin-top:1rem;">
+                <a href="index.html" style="color: var(--bleu-clair); text-decoration:none;">
+                    ← Retour à l'accueil
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIGURATION (modifiable) -->
+    <script src="js/config.js"></script>
+    <!-- SCRIPT -->
+    <script src="js/script.js"></script>
+</body>
+</html>
+

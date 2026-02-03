@@ -1,0 +1,1053 @@
+/* ===========================
+   UTILISATEURS
+   =========================== */
+
+const users = {
+    // Example professor account with associated modules per filiere
+    'professeur': {
+        password: 'ensa2024',
+        name: 'Ahmed Aberqi',
+        modules: {
+            isdia: ['Analyse', 'Algèbre'],
+            info: ['Algèbre'],
+            logiciel: ['Génie logiciel'],
+            cyber: ['Sécurité réseaux']
+        }
+    },
+    'admin': { password: 'admin123', name: 'Administrateur', modules: {} }
+};
+
+const etudiants = {
+    isdia: [
+        { num: 1, nom: "IBRAHIM", prenom: "Ahmed" },
+        { num: 2, nom: "HASSAN", prenom: "Sara" },
+        { num: 3, nom: "KHAN", prenom: "Youssef" },
+        { num: 4, nom: "FARRAH", prenom: "Imane" },
+        { num: 5, nom: "MALIK", prenom: "Omar" }
+    ],
+    ilia: [
+        { num: 1, nom: "BEN ALI", prenom: "Aya" },
+        { num: 2, nom: "HAMZA", prenom: "Hamza" },
+        { num: 3, nom: "NOUR", prenom: "Nour" },
+        { num: 4, nom: "REDA", prenom: "Reda" },
+        { num: 5, nom: "SALME", prenom: "Salma" }
+    ],
+    info: [
+        { num: 1, nom: "ANAS", prenom: "Anas" },
+        { num: 2, nom: "KHADIJA", prenom: "Khadija" },
+        { num: 3, nom: "BILAL", prenom: "Bilal" },
+        { num: 4, nom: "MERYEM", prenom: "Meryem" },
+        { num: 5, nom: "HICHAM", prenom: "Hicham" }
+    ],
+    logiciel: [
+        { num: 1, nom: "RANIA", prenom: "Rania" },
+        { num: 2, nom: "YASSINE", prenom: "Yassine" },
+        { num: 3, nom: "AMINE", prenom: "Amine" },
+        { num: 4, nom: "HAJAR", prenom: "Hajar" },
+        { num: 5, nom: "SOUFIANE", prenom: "Soufiane" }
+    ],
+    cyber: [
+        { num: 1, nom: "ZINEB", prenom: "Zineb" },
+        { num: 2, nom: "MEHDI", prenom: "Mehdi" },
+        { num: 3, nom: "IKRAM", prenom: "Ikram" },
+        { num: 4, nom: "FOUAD", prenom: "Fouad" },
+        { num: 5, nom: "LINA", prenom: "Lina" }
+    ]
+};
+
+// Exposer la liste des étudiants globalement pour les autres pages
+window.etudiants = etudiants;
+// API base for server (configurable via js/config.js -> window.API_BASE_URL)
+const API_BASE = (typeof window.API_BASE_URL !== 'undefined' && window.API_BASE_URL) ? window.API_BASE_URL : ((window.location.protocol === "file:") ? "http://localhost:3005" : "");
+
+// Charger la liste des professeurs depuis /data/teachers.json (utile pour site statique)
+(async function loadTeachers() {
+    try {
+        const resp = await fetch('/data/teachers.json');
+        if (resp.ok) {
+            const list = await resp.json();
+            window.TEACHERS = list || [];
+            // If no runtime TEACHER_CREDENTIALS defined, use first teacher as fallback
+            if ((!window.TEACHER_CREDENTIALS || !window.TEACHER_CREDENTIALS.username) && Array.isArray(list) && list.length) {
+                const t = list[0];
+                window.TEACHER_CREDENTIALS = window.TEACHER_CREDENTIALS || {};
+                window.TEACHER_CREDENTIALS.username = t.username || (t.nom ? (t.nom.toLowerCase()) : 'professeur');
+                window.TEACHER_CREDENTIALS.email = t.email || '';
+                // keep default password if not provided
+                window.TEACHER_CREDENTIALS.password = window.TEACHER_CREDENTIALS.password || 'ensa2024';
+                window.TEACHER_CREDENTIALS.name = (t.nom && t.prenom) ? (t.nom + ' ' + t.prenom) : (t.nom || t.prenom || window.TEACHER_CREDENTIALS.name);
+                window.TEACHER_CREDENTIALS.modules = t.modules || window.TEACHER_CREDENTIALS.modules || {};
+            }
+        }
+    } catch (e) {
+        // Ignore if file not present (older setups)
+    }
+})();
+
+// Override local teacher credentials from runtime config (js/config.js)
+try {
+    if (window.TEACHER_CREDENTIALS && window.TEACHER_CREDENTIALS.username) {
+        const t = window.TEACHER_CREDENTIALS;
+        const baseModules = (users['professeur'] && users['professeur'].modules) ? users['professeur'].modules : {};
+        users[t.username] = { password: t.password || 'ensa2024', name: t.name || t.username, modules: t.modules || baseModules };
+        if (t.username !== 'professeur' && users['professeur']) delete users['professeur'];
+    }
+} catch (e) { /* ignore if config not present */ }
+
+// ===========================
+// STOCKAGE DES DONNÉES
+// ===========================
+
+let donnees = { absences: {} };
+
+// Charger les données (priorité: per-user puis global)
+async function loadData() {
+    const currentUser = sessionStorage.getItem('current_user');
+
+    try {
+        // Chargement per-user si disponible
+        if (currentUser) {
+            const savedData = localStorage.getItem('donnees_' + currentUser);
+            if (savedData) {
+                donnees = JSON.parse(savedData);
+            }
+        }
+
+        // Sinon utiliser la copie globale (ou charger un fichier fallback `/data/donnees_global.json`)
+        if (!donnees || !donnees.absences) {
+            const globalSaved = localStorage.getItem('donnees_global');
+            if (globalSaved) {
+                donnees = JSON.parse(globalSaved);
+            } else {
+                // Try loading packaged sample data when no saved global exists
+                try {
+                    const resp = await fetch('/data/donnees_global.json');
+                    if (resp.ok) {
+                        const sample = await resp.json();
+                        if (sample && sample.absences) donnees = sample;
+                        else donnees = { absences: {} };
+                    } else {
+                        donnees = { absences: {} };
+                    }
+                } catch (e) {
+                    // network or file not present
+                    donnees = { absences: {} };
+                }
+            }
+        }
+
+        // If server API available, try to fetch centralized presences and overwrite local map
+        try {
+            const presResp = await fetch(API_BASE + '/api/presences');
+            if (presResp.ok) {
+                const rows = await presResp.json();
+                const map = { absences: {} };
+                rows.forEach(r => {
+                    // r.id is etudiant_id as returned by server
+                    const key = `${r.filiere}_${r.semaine}_${r.id}`;
+                    map.absences[key] = { statut: r.statut, module: r.module || undefined, teacher: r.teacher || undefined };
+                });
+                // merge: server data preferred
+                donnees = map;
+            }
+        } catch (e) { /* ignore if server unreachable */ }
+
+
+        // Exposer globalement
+        window.donnees = donnees;
+
+        // Persister pour cohérence
+        sessionStorage.setItem('donnees', JSON.stringify(donnees));
+        localStorage.setItem('donnees_global', JSON.stringify(donnees));
+
+        // Signaler que les données sont prêtes
+        window.dispatchEvent(new Event('donneesLoaded'));
+    } catch (error) {
+        console.error('Erreur lors du chargement des donnees:', error);
+        donnees = { absences: {} };
+        window.donnees = donnees;
+    }
+}
+
+// ===========================
+// FONCTIONS INITIALISATION
+// ===========================
+
+/**
+ * Initialiser l'application au chargement de la page
+ */
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadData();
+    
+    // Initialiser pour la page gestion (présences)
+    if (document.getElementById('semaineSelect')) {
+        initializeWeeks();
+    }
+
+    // Vérifier l'authentification sur la page gestion
+    if (document.getElementById('semaineSelect')) {
+        if (!sessionStorage.getItem('user_logged_in')) {
+            window.location.href = 'login.html';
+        }
+    }
+
+    // Initialiser le formulaire de connexion
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+
+    // If on signup page, attach handler (signup.html uses same ids)
+    const signupForm = document.getElementById('signupForm');
+    if (signupForm) signupForm.addEventListener('submit', handleSignupSubmit);
+    const signupCancel = document.getElementById('signupCancel');
+    if (signupCancel) signupCancel.addEventListener('click', closeSignupModal);
+
+    // If no local registered students, try loading a default test list from /data/students.json
+    try {
+        const existing = JSON.parse(localStorage.getItem('local_students') || '[]');
+        if (!existing || existing.length === 0) {
+            const resp = await fetch('/data/students.json');
+            if (resp.ok) {
+                const list = await resp.json();
+                // Normalize and store as local_students
+                const normalized = list.map(s => ({
+                    nom: s.nom || s.Nom || '',
+                    prenom: s.prenom || s.Prenom || '',
+                    email_academique: s.email_academique || s.email || '',
+                    num: s.num || s.id || null,
+                    filiere: s.filiere || '',
+                    code: s.code || '',
+                    deviceId: s.deviceId || ''
+                }));
+                if (normalized.length) localStorage.setItem('local_students', JSON.stringify(normalized));
+            }
+        }
+    } catch (e) {
+        // ignore fetch errors (server may be static without data)
+        console.warn('Could not load /data/students.json', e);
+    }
+});
+
+// Attacher l'événement de connexion immédiatement si on est sur la page de login
+if (document.getElementById('loginForm')) {
+    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+}
+
+/**
+ * Initialiser les semaines disponibles
+ */
+function initializeWeeks() {
+    console.log('Initialisation des semaines...');
+    const semaineSelect = document.getElementById('semaineSelect');
+    console.log('Élément semaineSelect:', semaineSelect);
+    
+    if (semaineSelect) {
+        // Vider les options existantes sauf la première
+        while (semaineSelect.options.length > 1) {
+            semaineSelect.remove(1);
+        }
+        
+        for (let i = 1; i <= 12; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `Semaine ${i}`;
+            semaineSelect.appendChild(option);
+            console.log(`Ajout semaine ${i}`);
+        }
+        console.log('Semaines ajoutées avec succès');
+    } else {
+        console.error('Élément semaineSelect non trouvé');
+    }
+}
+
+// ===========================
+// AUTHENTIFICATION
+// ===========================
+
+/**
+ * Gérer la connexion de l'utilisateur
+ */
+async function handleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const errorMessage = document.getElementById('errorMessage');
+
+    // Try server first, but fall back to local hardcoded users when unreachable
+    try {
+        const res = await fetch(API_BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+        let data = {};
+        try { data = await res.json(); } catch (e) { data = {}; }
+
+        if (res.ok && data && data.ok) {
+            // success from server
+            errorMessage.style.display = 'none';
+            sessionStorage.setItem('user_logged_in', 'true');
+            sessionStorage.setItem('current_user', data.username || username);
+            sessionStorage.setItem('current_user_display', data.name || username);
+            sessionStorage.setItem('current_user_modules', JSON.stringify(data.modules || {}));
+            setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+            return;
+        }
+
+        // Server responded but rejected credentials (e.g., 401). Attempt local fallback for known local accounts.
+        const serverMessage = (data && data.error) ? data.error : 'Nom d\'utilisateur ou mot de passe incorrect';
+        if (res.status === 401 || (res.ok && data && data.ok === false)) {
+            const local = users[username];
+            if (local && local.password === password) {
+                console.log('Login: server rejected credentials but local fallback succeeded for', username);
+                errorMessage.style.display = 'none';
+                sessionStorage.setItem('user_logged_in', 'true');
+                sessionStorage.setItem('current_user', username);
+                sessionStorage.setItem('current_user_display', local.name || username);
+                sessionStorage.setItem('current_user_modules', JSON.stringify(local.modules || {}));
+                setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+                return;
+            }
+            // No local fallback; show server message
+            errorMessage.textContent = serverMessage;
+            errorMessage.style.display = 'block';
+            return;
+        }
+
+        // Other server-side failure: show the message
+        errorMessage.textContent = serverMessage;
+        errorMessage.style.display = 'block';
+        return;
+
+    } catch (e) {
+        // Network/connection error -> try local fallback
+        console.warn('Login: server unreachable, attempting local fallback', e);
+        const local = users[username];
+        if (local && local.password === password) {
+            // Simulate successful login and restore previous behavior
+            errorMessage.style.display = 'none';
+            sessionStorage.setItem('user_logged_in', 'true');
+            sessionStorage.setItem('current_user', username);
+            sessionStorage.setItem('current_user_display', local.name || username);
+            sessionStorage.setItem('current_user_modules', JSON.stringify(local.modules || {}));
+            setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+            return;
+        }
+
+        errorMessage.textContent = 'Nom d\'utilisateur ou mot de passe incorrect';
+        errorMessage.style.display = 'block';
+        return;
+    }
+
+    // Fallback safety: if we reach here, show generic error
+    errorMessage.textContent = 'Nom d\'utilisateur ou mot de passe incorrect';
+    errorMessage.style.display = 'block';
+}
+
+/**
+ * Return teacher's default module for a filiere (first module) or empty string
+ */
+function getTeacherDefaultModule(filiere) {
+    try {
+        const raw = sessionStorage.getItem('current_user_modules');
+        if (raw) {
+            const modules = JSON.parse(raw);
+            if (modules) {
+                const list = modules[filiere];
+                if (Array.isArray(list) && list.length) return list[0];
+            }
+        }
+        // Default mapping: isdia -> Algèbre, others -> Analyse
+        const defaults = { isdia: 'Algèbre' };
+        return defaults[filiere] || 'Analyse';
+    } catch (e) { return ''; }
+}
+
+/**
+ * Get array of modules for current teacher for a filiere
+ */
+function getTeacherModules(filiere) {
+    try {
+        const raw = sessionStorage.getItem('current_user_modules');
+        if (raw) {
+            const modules = JSON.parse(raw);
+            if (modules && modules[filiere] && Array.isArray(modules[filiere]) && modules[filiere].length) return modules[filiere];
+        }
+    } catch (e) { /* ignore */ }
+    // no modules defined for this teacher+filiere
+    return [];
+}
+
+/**
+ * Populate module select element on gestion page for a filiere
+ */
+function updateModuleLabel(filiere) {
+    const label = document.getElementById('moduleLabel');
+    if (!label) return;
+    const modules = getTeacherModules(filiere || (document.getElementById('filiereSelect') && document.getElementById('filiereSelect').value));
+    if (modules && modules.length) label.textContent = modules.join(', ');
+    else label.textContent = '—';
+}
+
+/**
+ * Déconnexion
+ */
+function logout() {
+    sessionStorage.removeItem('user_logged_in');
+    sessionStorage.removeItem('current_user');
+    sessionStorage.removeItem('user_email');
+    window.location.href = 'login.html';
+}
+
+// ===========================
+// GESTION DES ABSENCES
+// ===========================
+
+/**
+ * Charger les étudiants de la filière sélectionnée
+ */
+function loadStudents() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaineSelect = document.getElementById('semaineSelect');
+
+    // Réinitialiser la semaine
+    semaineSelect.value = '';
+
+    if (!filiere) {
+        document.getElementById('tableContainer').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+    }
+
+    updateTableau();
+}
+
+/**
+ * Récupérer la liste d'étudiants pour une filière en priorisant les inscriptions
+ * (localStorage / API) puis en complétant avec les listes statiques pour tests.
+ */
+async function getRegisteredStudents(filiere) {
+    // If teacher logged in and API available, fetch from server
+    try {
+        const resp = await fetch(API_BASE + `/api/students?filiere=${encodeURIComponent(filiere || '')}`);
+        if (resp.ok) {
+            const rows = await resp.json();
+            // map to expected format: include server id as 'id'
+            return rows.map(r => ({ id: r.id, num: r.num || r.zk_user_id || r.num, nom: (r.nom||'').toUpperCase(), prenom: r.prenom }));
+        }
+    } catch (e) {
+        console.warn('API students unreachable, falling back to local_storage', e);
+    }
+    const local = JSON.parse(localStorage.getItem('local_students') || '[]');
+    const localForF = local.filter(s => s.filiere && s.filiere.toLowerCase() === (filiere || '').toLowerCase());
+    return localForF.map(s => ({ id: s.id || (s.num ? 'local-' + s.num : undefined), num: s.num, nom: (s.nom||'').toUpperCase(), prenom: s.prenom }));
+}
+
+/**
+ * Mettre à jour le tableau des absences
+ */
+async function updateTableau() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaine = document.getElementById('semaineSelect').value;
+    const tableContainer = document.getElementById('tableContainer');
+    const emptyState = document.getElementById('emptyState');
+
+    if (!filiere || !semaine) {
+        tableContainer.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    // Afficher le tableau
+    tableContainer.style.display = 'block';
+    emptyState.style.display = 'none';
+
+    // Remplir le tableau
+    const tableBody = document.getElementById('tableBody');
+    tableBody.innerHTML = '';
+
+    const students = await getRegisteredStudents(filiere);
+    students.forEach(student => {
+        const row = document.createElement('tr');
+        if (student.id) row.dataset.studentId = student.id;
+        const keyById = student.id ? `${filiere}_${semaine}_${student.id}` : null;
+        const keyByNum = `${filiere}_${semaine}_${student.num}`;
+        let raw = null;
+        if (keyById && donnees.absences[keyById]) raw = donnees.absences[keyById];
+        else if (donnees.absences[keyByNum]) raw = donnees.absences[keyByNum];
+        const status = (raw && typeof raw === 'string') ? raw : (raw && raw.statut ? raw.statut : '');
+
+        const idForClick = (student.id !== undefined && student.id !== null) ? student.id : student.num;
+
+        row.innerHTML = `
+            <td class="numero-col">${String(student.num).padStart(2, '0')}</td>
+            <td class="nom-col">${student.nom}</td>
+            <td class="prenom-col">${student.prenom}</td>
+            <td>
+                <div class="status-buttons">
+                    <button class="status-btn ${status === 'present' ? 'present' : ''}" 
+                            onclick="setStatus('${filiere}', ${semaine}, ${JSON.stringify(idForClick)}, 'present')">
+                        ✓ Présent
+                    </button>
+                    <button class="status-btn ${status === 'absent' ? 'absent' : ''}" 
+                            onclick="setStatus('${filiere}', ${semaine}, ${JSON.stringify(idForClick)}, 'absent')">
+                        ✗ Absent
+                    </button>
+                </div>
+            </td>
+            <td>
+                <button class="btn-detail btn-secondary" onclick="openDetail('${filiere}', ${JSON.stringify(idForClick)})">Détail</button>
+            </td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+
+    // Appliquer les styles
+    applyStatusStyles();
+}
+
+/**
+ * Définir le statut d'un étudiant
+ */
+async function setStatus(filiere, semaine, idOrNum, status) {
+    const modules = getTeacherModules(filiere);
+    const moduleName = (modules && modules.length) ? modules[0] : '';
+    const teacherName = sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '';
+
+    // Determine etudiant_id if idOrNum is numeric server id
+    let etudiantId = null;
+    if (typeof idOrNum === 'number') etudiantId = idOrNum;
+    else if (!isNaN(parseInt(idOrNum))) etudiantId = parseInt(idOrNum);
+
+    // If etudiantId found, try to persist on server
+    if (etudiantId) {
+        try {
+            await fetch(API_BASE + '/api/presence', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ etudiant_id: etudiantId, filiere, semaine: parseInt(semaine), statut: status, module: moduleName || null, teacher: teacherName || null })
+            });
+        } catch (e) {
+            console.warn('Failed to persist to server', e);
+        }
+    }
+
+    // Build a key for local storage mapping and update local cache
+    const key = `${filiere}_${semaine}_${(typeof idOrNum === 'number' ? idOrNum : idOrNum)}`;
+    const existing = donnees.absences[key];
+    if (existing && typeof existing === 'object') {
+        existing.statut = status;
+        if (moduleName) existing.module = moduleName;
+        if (teacherName) existing.teacher = teacherName;
+        donnees.absences[key] = existing;
+    } else {
+        donnees.absences[key] = { statut: status, module: moduleName || undefined, teacher: teacherName || undefined };
+    }
+
+    // Sauvegarder en localStorage pour persister par utilisateur
+    const currentUser = sessionStorage.getItem('current_user');
+    if (currentUser) {
+        localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+    }
+    // Aussi dans sessionStorage pour la session
+    sessionStorage.setItem('donnees', JSON.stringify(donnees));
+    // Signaler la mise  a0 jour des donn ees
+    window.dispatchEvent(new Event('donneesUpdated'));
+
+    // Mettre  a0 jour les boutons visuels
+    updateTableau();
+    
+    // Mettre à jour les statistiques
+    if (typeof updateStatistics === 'function') {
+        updateStatistics();
+    }
+}
+
+/**
+ * Appliquer les styles aux boutons de statut
+ */
+function applyStatusStyles() {
+    const buttons = document.querySelectorAll('.status-btn');
+    buttons.forEach(btn => {
+        if (btn.classList.contains('present') || btn.classList.contains('absent')) {
+            btn.style.cursor = 'pointer';
+        } else {
+            btn.style.cursor = 'pointer';
+            btn.style.opacity = '0.7';
+        }
+    });
+}
+
+/**
+ * Réinitialiser les données de la semaine actuelle
+ */
+function resetData() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaine = document.getElementById('semaineSelect').value;
+
+    if (!filiere || !semaine) {
+        alert('Veuillez sélectionner une filière et une semaine');
+        return;
+    }
+
+    if (confirm('Êtes-vous sûr de vouloir réinitialiser tous les statuts de cette semaine ?')) {
+        const students = etudiants[filiere];
+        students.forEach(student => {
+            const key = `${filiere}_${semaine}_${student.num}`;
+            delete donnees.absences[key];
+        });
+        // Persister la suppression
+        try {
+            const currentUser = sessionStorage.getItem('current_user');
+            if (currentUser) {
+                localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+            }
+            // Mettre à jour les copies de session et globale
+            sessionStorage.setItem('donnees', JSON.stringify(donnees));
+            localStorage.setItem('donnees_global', JSON.stringify(donnees));
+            window.dispatchEvent(new Event('donneesUpdated'));
+        } catch (e) { console.error('Erreur lors de la persistence après reset', e); }
+
+        updateTableau();
+    }
+}
+
+// ===========================
+// IMPORT .DAT
+// ===========================
+
+/**
+ * Importer les données depuis un fichier .dat ZKTeco
+ */
+function importDAT() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaine = document.getElementById('semaineSelect').value;
+
+    if (!filiere || !semaine) {
+        alert('Veuillez sélectionner une filière et une semaine avant d\'importer');
+        return;
+    }
+
+    // Créer un input file caché
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dat,.txt';
+    input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                parseDATFile(content, filiere, semaine);
+            };
+            reader.readAsText(file);
+        }
+    };
+    input.click();
+}
+
+/**
+ * Parser le contenu du fichier .dat
+ */
+async function parseDATFile(content, filiere, semaine) {
+    const lines = content.split('\n');
+    let importedCount = 0;
+    let invalidCount = 0;
+
+    // Registered students for this filiere
+    const registered = getRegisteredStudents(filiere);
+    const localStudents = JSON.parse(localStorage.getItem('local_students') || '[]');
+
+    // Keep a set of keys marked present during this import to avoid duplicates
+    const markedThisImport = new Set();
+
+    lines.forEach(line => {
+        line = line.trim();
+        if (!line) return;
+
+        // Accept CSV or whitespace-separated; first column is zdk/device id or num
+        const cols = line.split(/[,;\s]+/);
+        const first = cols[0];
+        if (!first) { invalidCount++; return; }
+
+        // Try matching by deviceId, num, zk_user_id, or email
+        let student = localStudents.find(s => String(s.deviceId) === String(first) || String(s.num) === String(first) || String(s.zk_user_id) === String(first) || String(s.email_academique) === String(first));
+
+        // If not found, try registered transformed list
+        if (!student) {
+            const reg = registered.find(r => String(r.num) === String(first));
+            if (reg) student = localStudents.find(s => String(s.num) === String(reg.num));
+        }
+
+        if (!student) { invalidCount++; return; }
+
+        const key = `${filiere}_${semaine}_${student.num}`;
+        // Determine module and teacher from UI/session to attach to imported presence
+        const modules = getTeacherModules(filiere);
+        const moduleName = (modules && modules.length) ? modules[0] : '';
+        const teacherName = sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '';
+
+        // Only count and set if not already marked present in this import
+        if (!markedThisImport.has(key)) {
+            const existing = donnees.absences[key];
+            const alreadyPresent = (existing && (typeof existing === 'string' ? existing === 'present' : existing.statut === 'present'));
+            if (!alreadyPresent) {
+                donnees.absences[key] = { statut: 'present', module: moduleName || undefined, teacher: teacherName || undefined };
+                markedThisImport.add(key);
+                importedCount++;
+            }
+        }
+        // If already present, ignore duplicates silently
+    });
+
+    // Note: do NOT mark all other students as 'absent' automatically here.
+    // Absence should be an explicit action; leaving keys unset means "non renseigné".
+
+    // Persist updates locally
+    const currentUser = sessionStorage.getItem('current_user');
+    if (currentUser) localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+    sessionStorage.setItem('donnees', JSON.stringify(donnees));
+    localStorage.setItem('donnees_global', JSON.stringify(donnees));
+    window.dispatchEvent(new Event('donneesUpdated'));
+    updateTableau();
+    if (typeof updateStatistics === 'function') updateStatistics();
+
+    // Try to persist imported presences to server (best-effort)
+    try {
+        const studentsOnServerResp = await fetch(API_BASE + `/api/students?filiere=${encodeURIComponent(filiere)}`);
+        let serverStudents = [];
+        if (studentsOnServerResp.ok) serverStudents = await studentsOnServerResp.json();
+        for (const key of markedThisImport) {
+            const parts = key.split('_');
+            if (parts.length !== 3) continue;
+            const [f, s, num] = parts;
+            // find server student by num (or fallback by deviceId or email)
+            const found = serverStudents.find(st => String(st.num) === String(num) || String(st.zk_user_id) === String(num));
+            if (found) {
+                try {
+                    await fetch(API_BASE + '/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etudiant_id: found.id, filiere: f, semaine: parseInt(s), statut: 'present', module: '', teacher: sessionStorage.getItem('current_user_display') || '' }) });
+                } catch (e) { /* ignore individual failures */ }
+            }
+        }
+    } catch (e) { /* ignore network errors */ }
+
+    alert(`Import terminé: ${importedCount} présences importées, ${invalidCount} enregistrements invalides ignorés.`);
+}
+
+/**
+ * Obtenir le numéro de semaine dans l'année
+ */
+function getWeekOfYear(date) {
+    const start = new Date(date.getFullYear(), 0, 1);
+    const diff = date - start;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    return Math.floor(dayOfYear / 7) + 1;
+}
+
+// ===========================
+// EXPORT PDF
+// ===========================
+
+/**
+ * Exporter le tableau en PDF
+ */
+function exportToPDF() {
+    const filiere = document.getElementById('filiereSelect').value;
+    const semaine = document.getElementById('semaineSelect').value;
+
+    if (!filiere || !semaine) {
+        alert('Veuillez sélectionner une filière et une semaine avant d\'exporter');
+        return;
+    }
+
+    // Récupérer le tableau
+    const table = document.getElementById('attendanceTable');
+    const filiereLabel = document.getElementById('filiereSelect').options[document.getElementById('filiereSelect').selectedIndex].text;
+
+    // Créer un conteneur temporaire pour le PDF
+    const element = document.createElement('div');
+    element.style.padding = '20px';
+    element.style.backgroundColor = '#FFFFFF';
+
+    // En-tête du PDF
+    const header = document.createElement('div');
+    header.style.marginBottom = '20px';
+    header.style.borderBottom = '2px solid #0B3C5D';
+    header.style.paddingBottom = '15px';
+
+    const title = document.createElement('h1');
+    title.textContent = 'ENSA Fès - Rapport de Présence';
+    title.style.color = '#0B3C5D';
+    title.style.marginBottom = '10px';
+
+    const details = document.createElement('p');
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('fr-FR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    details.innerHTML = `
+        <strong>Filière :</strong> ${filiereLabel}<br>
+        <strong>Semaine :</strong> ${semaine}<br>
+        <strong>Date :</strong> ${dateStr}
+    `;
+    details.style.color = '#2C3E50';
+    details.style.fontSize = '14px';
+
+    header.appendChild(title);
+    header.appendChild(details);
+    element.appendChild(header);
+
+    // Clone du tableau
+    const tableClone = table.cloneNode(true);
+    element.appendChild(tableClone);
+
+    // Options pour html2pdf
+    const options = {
+        margin: 10,
+        filename: `presence_${filiereLabel}_semaine${semaine}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+    };
+
+    // Générer et télécharger le PDF
+    html2pdf().set(options).from(element).save();
+}
+
+// ===========================
+// IMPRESSION NAVIGATEUR
+// ===========================
+
+/**
+ * Utiliser la fonction d'impression du navigateur
+ */
+function printPDF() {
+    window.print();
+}
+
+// Ouvrir la page de dÃ©tail pour un Ã©tudiant (filiÃ¨re + num)
+function openDetail(filiere, num) {
+    // Open the full detail page (with charts) for both professors and students
+    window.location.href = `quatrieme_page.html?filiere=${filiere}&num=${num}`;
+}
+
+function renderStudentHistoryModal(filiere, num) {
+    try {
+        const local = JSON.parse(localStorage.getItem('local_students') || '[]');
+        let s = local.find(x => String(x.num) === String(num) && x.filiere && x.filiere.toLowerCase() === filiere.toLowerCase());
+        if (!s) {
+            const arr = etudiants[filiere] || [];
+            const r = arr.find(x => String(x.num) === String(num));
+            s = r ? { num: r.num, nom: r.nom, prenom: r.prenom, filiere } : { num, nom: '—', prenom: '—', filiere };
+        }
+
+        document.getElementById('modalStudentName').textContent = (s.nom + ' ' + s.prenom).trim();
+        document.getElementById('modalFiliere').textContent = filiere;
+        document.getElementById('modalNum').textContent = s.num || num;
+
+        // Build history map by semaine
+        const byWeek = new Map();
+        for (const k in donnees.absences) {
+            const parts = k.split('_');
+            if (parts.length !== 3) continue;
+            const [f, semaine, n] = parts;
+            if (f !== filiere || String(n) !== String(num)) continue;
+            const raw = donnees.absences[k];
+            const statut = (raw && typeof raw === 'string') ? raw : (raw && raw.statut ? raw.statut : 'Non renseigné');
+            const moduleName = (raw && raw.module) ? raw.module : '';
+            const teacherName = (raw && raw.teacher) ? raw.teacher : '';
+            const existing = byWeek.get(semaine);
+            if (!existing) byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+            else {
+                if (existing.statut !== 'present' && statut === 'present') byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+            }
+        }
+
+        const weeks = Array.from(byWeek.keys()).map(w => parseInt(w)).filter(n => !isNaN(n)).sort((a,b)=>a-b);
+        const tbody = document.getElementById('modalHistoryBody'); tbody.innerHTML = '';
+        weeks.forEach(w => {
+            const info = byWeek.get(String(w));
+            const statut = info && info.statut ? info.statut : 'Non renseigné';
+            const moduleName = (info && info.module) ? info.module : getTeacherDefaultModule(filiere);
+            const teacherName = (info && info.teacher) ? info.teacher : '';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${w}</td><td>${statut}</td><td>${moduleName}</td><td>${teacherName}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        const modal = document.getElementById('studentHistoryModal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        const closeBtn = document.getElementById('modalCloseBtn');
+        if (closeBtn) closeBtn.onclick = () => { modal.style.display = 'none'; };
+        modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
+    } catch (e) {
+        console.error('Erreur affichage modal étudiant', e);
+    }
+}
+
+// ===========================
+// INSCRIPTION ÉTUDIANT (FRONT)
+// ===========================
+
+document.addEventListener('DOMContentLoaded', () => {
+    const signupBtn = document.getElementById('signupBtn');
+    if (signupBtn) signupBtn.addEventListener('click', openSignupModal);
+
+    const signupCancel = document.getElementById('signupCancel');
+    if (signupCancel) signupCancel.addEventListener('click', closeSignupModal);
+
+    const signupForm = document.getElementById('signupForm');
+    if (signupForm) signupForm.addEventListener('submit', handleSignupSubmit);
+});
+
+function openSignupModal() {
+    const m = document.getElementById('signupModal');
+    if (m) m.style.display = 'flex';
+}
+
+function closeSignupModal() {
+    const m = document.getElementById('signupModal');
+    if (m) m.style.display = 'none';
+    const msg = document.getElementById('signupMsg'); if (msg) { msg.style.display='none'; msg.textContent=''; }
+}
+
+async function handleSignupSubmit(e) {
+    e.preventDefault();
+    const nom = document.getElementById('signupNom').value.trim();
+    const prenom = document.getElementById('signupPrenom').value.trim();
+    const num = document.getElementById('signupNum').value.trim();
+    const filiere = document.getElementById('signupFiliere').value.trim();
+    const email = document.getElementById('signupEmail').value.trim();
+    const code = (document.getElementById('signupCode') ? document.getElementById('signupCode').value.trim() : '');
+    const deviceId = (document.getElementById('signupDevice') ? document.getElementById('signupDevice').value.trim() : '');
+    const msg = document.getElementById('signupMsg');
+
+    if (!email.endsWith('@usmba.ac.ma')) {
+        if (msg) { msg.style.display='block'; msg.textContent='Utilisez une adresse usmba.ac.ma'; }
+        return;
+    }
+    // If no API backend is configured (GitHub Pages static), save locally and skip network
+    const payload = { nom, prenom, num, filiere, email_academique: email, code, deviceId };
+    if (!API_BASE) {
+        saveLocalStudent(payload);
+        if (msg) { msg.style.display='block'; msg.textContent = 'Inscription enregistrée localement (site statique).'; }
+        setTimeout(() => {
+            const modal = document.getElementById('signupModal');
+            if (modal) { closeSignupModal(); } else { window.location.href = 'student.html'; }
+        }, 900);
+        return;
+    }
+
+    // Otherwise try to call the API and fall back to local if it fails
+    try {
+        const res = await fetch(API_BASE + '/api/signup', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            // Fallback: save locally so student can see account immediately
+            saveLocalStudent(payload);
+            if (msg) { msg.style.display='block'; msg.textContent = data.error || 'Inscription enregistrée localement.'; }
+            setTimeout(() => { closeSignupModal(); }, 900);
+            return;
+        }
+
+        if (msg) { msg.style.display='block'; msg.style.color='#080'; msg.textContent = 'Inscription réussie.'; }
+        setTimeout(() => {
+            const modal = document.getElementById('signupModal');
+            if (modal) { closeSignupModal(); } else { window.location.href = 'student.html'; }
+        }, 900);
+    } catch (err) {
+        // Network error: persist locally so the user can continue
+        saveLocalStudent(payload);
+        if (msg) { msg.style.display='block'; msg.textContent='Inscription enregistrée localement (offline).'; }
+        setTimeout(() => {
+            const modal = document.getElementById('signupModal');
+            if (modal) { closeSignupModal(); } else { window.location.href = 'student.html'; }
+        }, 900);
+    }
+}
+
+function saveLocalStudent(student) {
+    try {
+        const key = 'local_students';
+        const arr = JSON.parse(localStorage.getItem(key) || '[]');
+        // Assign numeric `num` per filiere if not provided
+        let assigned = Object.assign({}, student);
+        if (!assigned.num) {
+            // compute next num for filiere
+            const same = arr.filter(s => (s.filiere || '').toLowerCase() === (assigned.filiere || '').toLowerCase());
+            const maxNum = same.reduce((m, x) => Math.max(m, parseInt(x.num || 0) || 0), 0);
+            assigned.num = maxNum + 1;
+        }
+        arr.push(assigned);
+        localStorage.setItem(key, JSON.stringify(arr));
+        // also add to in-memory etudiants if filiere provided
+        if (assigned.filiere) {
+            if (!etudiants[assigned.filiere]) etudiants[assigned.filiere] = [];
+            etudiants[assigned.filiere].push({ num: assigned.num, nom: assigned.nom.toUpperCase(), prenom: assigned.prenom });
+        }
+
+        // Best-effort: try to create the same student on the server so registration is shared
+            // If an API is configured, try to sync; otherwise skip network (static site)
+            if (API_BASE) {
+                (async () => {
+                    try {
+                        const resp = await fetch(API_BASE + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId, code: assigned.code }) });
+                        if (resp.ok) {
+                            const j = await resp.json().catch(() => ({}));
+                            if (j.student && j.student.id && assigned.num) {
+                                assigned.id = j.student.id;
+                                localStorage.setItem(key, JSON.stringify(arr));
+                            }
+                        }
+                    } catch (e) { /* ignore offline errors */ }
+                })();
+            }
+    } catch (e) {
+        console.error('Failed to save local student', e);
+    }
+}
+
+// Synchroniser les donn ees globalement quand elles sont mises  jour
+window.addEventListener('donneesUpdated', () => {
+    try {
+        // mettre  a jour la copie globale et l'exposer aux autres pages
+        localStorage.setItem('donnees_global', JSON.stringify(donnees));
+        sessionStorage.setItem('donnees', JSON.stringify(donnees));
+        window.donnees = donnees;
+    } catch (e) {
+        console.error('Erreur sync donnees globales', e);
+    }
+});
+
+// Assurer que la variable globale est initialisée au chargement
+window.addEventListener('donneesLoaded', () => {
+    try {
+        if (!window.donnees) window.donnees = donnees || { absences: {} };
+    } catch (e) { /* ignore */ }
+});
+
+// Fill navbar user display if present in session
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const name = sessionStorage.getItem('current_user_display');
+        if (name) {
+            const el = document.getElementById('navUser');
+            if (el) { el.textContent = `Connecté : ${name}`; el.style.display = 'inline'; }
+        }
+    } catch (e) { /* ignore */ }
+    // populate module select when gestion page is active
+    try {
+        const filSel = document.getElementById('filiereSelect');
+        if (filSel) {
+            // populate module label for current selection
+            updateModuleLabel(filSel.value);
+            filSel.addEventListener('change', ()=> updateModuleLabel(filSel.value));
+        }
+    } catch (e) { /* ignore */ }
+});

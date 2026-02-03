@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Espace Étudiant - FlowTrack</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-logo">ENSA Fès</div>
+        <div class="navbar-nav">
+            <a href="index.html">Accueil</a>
+            <button id="studentLogoutBtn" onclick="studentLogout()" style="display:none; margin-left:8px; background:transparent; border:none; color:var(--blanc); cursor:pointer; font-weight:600;">Se déconnecter</button>
+            <span id="navUser" style="margin-left:12px; font-weight:600; color:#083; display:none;"></span>
+        </div>
+    </nav>
+
+    <div class="login-container">
+        <div class="login-card" style="max-width:760px;">
+            <div class="login-header">
+                <h2>Espace Étudiant</h2>
+                <p>Connectez-vous avec votre email académique et votre code</p>
+            </div>
+                <!-- Simplified: single Connexion form, inscription link moved to bottom -->
+                <form id="studentLoginForm">
+                <div id="studentMsg" class="error-message" style="display:none;"></div>
+                <div class="form-group">
+                    <label for="studentEmail">Email académique</label>
+                    <input id="studentEmail" type="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentCode">Code</label>
+                    <input id="studentCode" type="password" required>
+                </div>
+
+                <button type="submit" class="btn-login">Se connecter</button>
+                </form>
+
+                <div style="margin-top:10px;">
+                    <p>Pas encore inscrit ? <a href="signup.html" style="color:var(--bleu-clair); font-weight:600; text-decoration:none;">S'inscrire</a></p>
+                </div>
+
+            
+
+                <!-- Signup form (hidden by default for compatibility, but primary signup is on signup.html) -->
+                <form id="signupForm" style="display:none; margin-top:12px;">
+                    <div id="signupMsg" class="error-message" style="display:none;"></div>
+                    <div class="form-group">
+                        <label for="signupNom">Nom</label>
+                        <input type="text" id="signupNom">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupPrenom">Prénom</label>
+                        <input type="text" id="signupPrenom">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupFiliere">Filière</label>
+                        <input type="text" id="signupFiliere" placeholder="ex: info">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupNum">Numéro (optionnel)</label>
+                        <input type="text" id="signupNum">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupEmail">Email académique</label>
+                        <input type="email" id="signupEmail" placeholder="nom@usmba.ac.ma">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupCode">Code (mot de passe)</label>
+                        <input type="password" id="signupCode" placeholder="Code secret">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupDevice">ID d'appareil (device id)</label>
+                        <input type="text" id="signupDevice" placeholder="ex: DEVICE123">
+                    </div>
+                            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                <button type="button" id="cancelSignup" class="btn-secondary">Annuler</button>
+                                <button type="submit" class="btn-login">S'inscrire</button>
+                            </div>
+                        </form>
+
+            <div id="studentDashboard" style="display:none; margin-top:8px;">
+                <h3 id="sdName">—</h3>
+                <p><strong>Filière:</strong> <span id="sdFiliere">—</span></p>
+                <p><strong>Numéro:</strong> <span id="sdNum">—</span></p>
+                <div id="sdStats">
+                    <p>Présences: <span id="sdPres">0</span></p>
+                    <p>Absences: <span id="sdAbs">0</span></p>
+                </div>
+                
+
+                <div style="height:220px; max-width:420px; margin:8px auto;">
+                    <canvas id="studentChart"></canvas>
+                </div>
+
+                <h4>Historique par semaine</h4>
+                <table class="attendance-table">
+                    <thead><tr><th>Semaine</th><th>Statut</th><th>Module</th><th>Enseignant</th></tr></thead>
+                    <tbody id="sdTable"></tbody>
+                </table>
+                <div id="noWeeksMsg" style="display:none; text-align:center; margin-top:12px; color:#666;">Aucune semaine renseignée.</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script>
+        // student page handlers
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('studentLoginForm');
+            if (form) form.addEventListener('submit', handleStudentLogin);
+            // signup handlers for inline form
+            const signupForm = document.getElementById('signupForm');
+            if (signupForm) signupForm.addEventListener('submit', handleSignupSubmit);
+            const tabLogin = document.getElementById('tabLogin');
+            const tabSignup = document.getElementById('tabSignup');
+            const cancelSignup = document.getElementById('cancelSignup');
+            if (tabLogin) tabLogin.addEventListener('click', (e)=>{ e.preventDefault(); document.getElementById('studentLoginForm').style.display='block'; document.getElementById('signupForm').style.display='none'; });
+            if (tabSignup) tabSignup.addEventListener('click', (e)=>{ e.preventDefault(); document.getElementById('studentLoginForm').style.display='none'; document.getElementById('signupForm').style.display='block'; });
+            if (cancelSignup) cancelSignup.addEventListener('click', (e)=>{ e.preventDefault(); document.getElementById('studentLoginForm').style.display='block'; document.getElementById('signupForm').style.display='none'; });
+
+            // Auto-show student dashboard if previously logged in (persisted)
+            try {
+                const lastEmail = localStorage.getItem('last_student_email');
+                if (lastEmail) {
+                    const local = JSON.parse(localStorage.getItem('local_students') || '[]');
+                    const s = local.find(x => x.email_academique === lastEmail);
+                    if (s) {
+                        // ensure session state and show dashboard
+                        sessionStorage.setItem('current_user', s.email_academique);
+                        sessionStorage.setItem('current_user_display', (s.nom + ' ' + s.prenom).trim());
+                        showStudentDashboard(s);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            // Nav user: only show student name here (avoid showing professor name)
+            try {
+                const nav = document.getElementById('navUser');
+                if (nav) {
+                    const studentName = sessionStorage.getItem('current_user_display');
+                    const isStudent = sessionStorage.getItem('current_user');
+                    if (isStudent && studentName) {
+                        nav.textContent = `Connecté : ${studentName}`;
+                        nav.style.display = 'inline';
+                    } else {
+                        nav.style.display = 'none';
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        });
+
+        function handleStudentLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('studentEmail').value.trim();
+            const code = document.getElementById('studentCode').value.trim();
+            const msg = document.getElementById('studentMsg');
+
+            const local = JSON.parse(localStorage.getItem('local_students') || '[]');
+            console.log('student login attempt:', { email, code, localCount: local.length });
+
+            // Try multiple matching strategies: full academic email + code, deviceId, num
+            let s = local.find(x => x.email_academique === email && x.code === code);
+            if (!s) s = local.find(x => String(x.num) === String(email) && x.code === code);
+            if (!s) s = local.find(x => String(x.deviceId) === String(email) && x.code === code);
+            // allow email without domain if possible
+            if (!s && email && !email.includes('@')) {
+                s = local.find(x => x.email_academique && x.email_academique.split('@')[0] === email && x.code === code);
+            }
+
+            if (!s) {
+                msg.style.display='block'; msg.textContent='Utilisateur introuvable ou code incorrect.'; 
+                console.warn('Local students:', local);
+                return;
+            }
+
+            // Persist a simple student session so next visits show the dashboard
+            try {
+                sessionStorage.setItem('current_user', s.email_academique);
+                sessionStorage.setItem('current_user_display', (s.nom + ' ' + s.prenom).trim());
+                // Keep a local persistent pointer so user remains recognized across browser restarts
+                localStorage.setItem('last_student_email', s.email_academique);
+            } catch (e) { /* ignore */ }
+
+            showStudentDashboard(s);
+        }
+
+        // Show dashboard for a student object
+        function showStudentDashboard(s) {
+            // update nav user display for student
+            try {
+                const nav = document.getElementById('navUser');
+                if (nav) {
+                    const name = (s.nom + ' ' + s.prenom).trim();
+                    nav.textContent = `Connecté : ${name}`;
+                    nav.style.display = 'inline';
+                }
+            } catch (e) { /* ignore */ }
+
+            try {
+                const outBtn = document.getElementById('studentLogoutBtn');
+                if (outBtn) outBtn.style.display = 'inline-block';
+            } catch (e) {}
+
+            document.getElementById('studentLoginForm').style.display='none';
+            document.getElementById('studentDashboard').style.display='block';
+            document.getElementById('sdName').textContent = s.nom + ' ' + s.prenom;
+            document.getElementById('sdFiliere').textContent = s.filiere || '-';
+            document.getElementById('sdNum').textContent = s.num || '-';
+
+            // compute stats from donnees (global or per-user)
+            const donneesStr = localStorage.getItem('donnees_global') || sessionStorage.getItem('donnees') || localStorage.getItem('donnees_' + (sessionStorage.getItem('current_user') || ''));
+            let d = { absences: {} };
+            try { d = JSON.parse(donneesStr || '{}'); } catch(e){}
+
+            // student's filiere (used for default module fallback)
+            const filiere = (s.filiere || '').toString();
+            const filiereLower = filiere.toLowerCase();
+
+            // Build a map from existing donnees keys: only render weeks that have data for this student
+            const byWeek = new Map();
+            const abs = (d && d.absences) ? d.absences : {};
+            for (const k in abs) {
+                const parts = k.split('_');
+                if (parts.length !== 3) continue;
+                const [f, semaine, num] = parts;
+                if (String(f).toLowerCase() !== filiereLower) continue;
+                if (String(num) !== String(s.num)) continue;
+                const raw = abs[k];
+                const statut = (raw && typeof raw === 'string') ? raw : (raw && raw.statut ? raw.statut : 'Non renseigné');
+                const moduleName = (raw && raw.module) ? raw.module : ((filiereLower === 'isdia') ? 'Algèbre' : 'Analyse');
+                const teacherName = (raw && raw.teacher) ? raw.teacher : (sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '');
+                const existing = byWeek.get(semaine);
+                if (!existing) byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+                else if (existing.statut !== 'present' && statut === 'present') byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+            }
+
+            // Fallback: if no entries found, try scanning other `donnees_<user>` keys in localStorage
+            if (byWeek.size === 0) {
+                try {
+                    console.log('No direct entries in donnees_global for student, scanning localStorage for donnees_* keys');
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (!key || !key.startsWith('donnees_')) continue;
+                        try {
+                            const maybe = JSON.parse(localStorage.getItem(key) || '{}');
+                            const maybeAbs = maybe && maybe.absences ? maybe.absences : {};
+                            for (const k in maybeAbs) {
+                                const parts = k.split('_');
+                                if (parts.length !== 3) continue;
+                                const [f, semaine, num] = parts;
+                                if (String(f).toLowerCase() !== filiereLower) continue;
+                                if (String(num) !== String(s.num)) continue;
+                                const raw = maybeAbs[k];
+                                const statut = (raw && typeof raw === 'string') ? raw : (raw && raw.statut ? raw.statut : 'Non renseigné');
+                                const moduleName = (raw && raw.module) ? raw.module : ((filiereLower === 'isdia') ? 'Algèbre' : 'Analyse');
+                                const teacherName = (raw && raw.teacher) ? raw.teacher : '';
+                                const existing = byWeek.get(semaine);
+                                if (!existing) byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+                                else if (existing.statut !== 'present' && statut === 'present') byWeek.set(semaine, { statut, module: moduleName, teacher: teacherName });
+                            }
+                        } catch (e) { /* ignore invalid json */ }
+                    }
+                } catch (e) { console.warn('fallback scan failed', e); }
+            }
+
+            const weeks = Array.from(byWeek.keys()).map(w => parseInt(w)).filter(n => !isNaN(n)).sort((a,b)=>a-b);
+            let presCount = 0, absCount = 0;
+            const tbody = document.getElementById('sdTable'); tbody.innerHTML='';
+            const chartLabels = [];
+            const chartData = [];
+            if (weeks.length === 0) {
+                document.getElementById('noWeeksMsg').style.display = 'block';
+            } else {
+                document.getElementById('noWeeksMsg').style.display = 'none';
+            }
+            weeks.forEach(w => {
+                const info = byWeek.get(String(w));
+                const statut = info && info.statut ? info.statut : 'Non renseigné';
+                if (statut === 'present') presCount++; else if (statut === 'absent') absCount++;
+                const moduleName = (info && info.module) ? info.module : ((filiereLower === 'isdia') ? 'Algèbre' : 'Analyse');
+                const teacherName = (info && info.teacher) ? info.teacher : (sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '');
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${w}</td><td>${statut}</td><td>${moduleName}</td><td>${teacherName}</td>`;
+                tbody.appendChild(tr);
+                chartLabels.push('S' + w);
+                chartData.push((statut === 'present') ? 1 : ((statut === 'absent') ? 0 : 0));
+            });
+
+            document.getElementById('sdPres').textContent = presCount;
+            document.getElementById('sdAbs').textContent = absCount;
+
+            // render/update student chart
+            try {
+                const ctx = document.getElementById('studentChart').getContext('2d');
+                if (window.studentChart) {
+                    window.studentChart.data.labels = chartLabels;
+                    window.studentChart.data.datasets[0].data = chartData;
+                    window.studentChart.update();
+                } else {
+                    window.studentChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: chartLabels,
+                            datasets: [{ label: 'Présence (1=présent)', data: chartData, backgroundColor: '#1F5F8B' }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero:true, ticks: { stepSize:1 } } } }
+                    });
+                }
+            } catch (e) { /* Chart not available or canvas missing */ }
+
+            
+        }
+
+        function studentLogout() {
+            try {
+                localStorage.removeItem('last_student_email');
+                sessionStorage.removeItem('current_user');
+                sessionStorage.removeItem('current_user_display');
+            } catch (e) {}
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>

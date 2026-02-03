@@ -1,0 +1,33 @@
+{
+  "name": "ensa-gestion-absences",
+  "version": "1.0.0",
+  "description": "Application web de gestion des absences pour ENSA Fès",
+  "author": "ENSA Fès",
+  "keywords": [
+    "absence",
+    "gestion",
+    "education",
+    "ensa"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "start:static": "python3 -m http.server 8000",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.0",
+    "pg": "^8.11.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ensafes/gestion-absences"
+  },
+  "bugs": {
+    "url": "https://github.com/ensafes/gestion-absences/issues"
+  },
+  "homepage": "https://github.com/ensafes/gestion-absences#readme"
+}

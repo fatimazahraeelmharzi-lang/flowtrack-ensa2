@@ -1,0 +1,20 @@
+{
+  "absences": {
+    "info_1_1": {
+      "statut": "present",
+      "module": "Alg�bre",
+      "teacher": "Test Prof"
+    },
+    "info_2_1": "absent",
+    "info_3_1": "present",
+    "info_4_1": "present",
+    "info_5_1": "absent",
+    "info_6_1": "present",
+    "info_7_1": "present",
+    "info_8_1": "absent",
+    "info_9_1": "present",
+    "info_10_1": "present",
+    "info_11_1": "present",
+    "info_12_1": "absent"
+  }
+}
