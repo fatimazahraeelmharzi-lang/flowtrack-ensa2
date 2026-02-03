@@ -240,27 +240,53 @@ async function handleLogin(e) {
     const password = document.getElementById('password').value.trim();
     const errorMessage = document.getElementById('errorMessage');
 
+    // Try server first, but fall back to local hardcoded users when unreachable
     try {
         const res = await fetch(API_BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-            errorMessage.textContent = data.error || 'Nom d\'utilisateur ou mot de passe incorrect';
+        let data = {};
+        try { data = await res.json(); } catch (e) { data = {}; }
+
+        if (res.ok && data && data.ok) {
+            // success from server
+            errorMessage.style.display = 'none';
+            sessionStorage.setItem('user_logged_in', 'true');
+            sessionStorage.setItem('current_user', data.username || username);
+            sessionStorage.setItem('current_user_display', data.name || username);
+            sessionStorage.setItem('current_user_modules', JSON.stringify(data.modules || {}));
+            setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+            return;
+        }
+
+        // If server responded but credentials invalid, show message from server or default message
+        if (!res.ok || (data && data.ok === false)) {
+            errorMessage.textContent = (data && data.error) ? data.error : 'Nom d\'utilisateur ou mot de passe incorrect';
             errorMessage.style.display = 'block';
             return;
         }
-        // success
-        errorMessage.style.display = 'none';
-        sessionStorage.setItem('user_logged_in', 'true');
-        sessionStorage.setItem('current_user', data.username || username);
-        sessionStorage.setItem('current_user_display', data.name || username);
-        sessionStorage.setItem('current_user_modules', JSON.stringify(data.modules || {}));
 
-        setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
     } catch (e) {
-        console.error('Login failed', e);
-        errorMessage.textContent = 'Erreur de connexion';
+        // Network/connection error -> try local fallback
+        console.warn('Login: server unreachable, attempting local fallback', e);
+        const local = users[username];
+        if (local && local.password === password) {
+            // Simulate successful login and restore previous behavior
+            errorMessage.style.display = 'none';
+            sessionStorage.setItem('user_logged_in', 'true');
+            sessionStorage.setItem('current_user', username);
+            sessionStorage.setItem('current_user_display', local.name || username);
+            sessionStorage.setItem('current_user_modules', JSON.stringify(local.modules || {}));
+            setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+            return;
+        }
+
+        errorMessage.textContent = 'Nom d\'utilisateur ou mot de passe incorrect';
         errorMessage.style.display = 'block';
+        return;
     }
+
+    // Fallback safety: if we reach here, show generic error
+    errorMessage.textContent = 'Nom d\'utilisateur ou mot de passe incorrect';
+    errorMessage.style.display = 'block';
 }
 
 /**
