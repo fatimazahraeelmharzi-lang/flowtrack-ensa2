@@ -57,6 +57,8 @@ const etudiants = {
 
 // Exposer la liste des étudiants globalement pour les autres pages
 window.etudiants = etudiants;
+// API base for server (fallback to localhost when opened from file://)
+const API_BASE = (window.location.protocol === "file:") ? "http://localhost:3005" : "";
 
 // ===========================
 // STOCKAGE DES DONNÉES
@@ -102,7 +104,7 @@ async function loadData() {
 
         // If server API available, try to fetch centralized presences and overwrite local map
         try {
-            const presResp = await fetch('/api/presences');
+            const presResp = await fetch(API_BASE + '/api/presences');
             if (presResp.ok) {
                 const rows = await presResp.json();
                 const map = { absences: {} };
@@ -239,7 +241,7 @@ async function handleLogin(e) {
     const errorMessage = document.getElementById('errorMessage');
 
     try {
-        const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+        const res = await fetch(API_BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
         const data = await res.json();
         if (!res.ok || !data.ok) {
             errorMessage.textContent = data.error || 'Nom d\'utilisateur ou mot de passe incorrect';
@@ -346,7 +348,7 @@ function loadStudents() {
 async function getRegisteredStudents(filiere) {
     // If teacher logged in and API available, fetch from server
     try {
-        const resp = await fetch(`/api/students?filiere=${encodeURIComponent(filiere || '')}`);
+        const resp = await fetch(API_BASE + `/api/students?filiere=${encodeURIComponent(filiere || '')}`);
         if (resp.ok) {
             const rows = await resp.json();
             // map to expected format: include server id as 'id'
@@ -440,7 +442,7 @@ async function setStatus(filiere, semaine, idOrNum, status) {
     // If etudiantId found, try to persist on server
     if (etudiantId) {
         try {
-            await fetch('/api/presence', {
+            await fetch(API_BASE + '/api/presence', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ etudiant_id: etudiantId, filiere, semaine: parseInt(semaine), statut: status, module: moduleName || null, teacher: teacherName || null })
@@ -632,7 +634,7 @@ async function parseDATFile(content, filiere, semaine) {
 
     // Try to persist imported presences to server (best-effort)
     try {
-        const studentsOnServerResp = await fetch(`/api/students?filiere=${encodeURIComponent(filiere)}`);
+        const studentsOnServerResp = await fetch(API_BASE + `/api/students?filiere=${encodeURIComponent(filiere)}`);
         let serverStudents = [];
         if (studentsOnServerResp.ok) serverStudents = await studentsOnServerResp.json();
         for (const key of markedThisImport) {
@@ -643,7 +645,7 @@ async function parseDATFile(content, filiere, semaine) {
             const found = serverStudents.find(st => String(st.num) === String(num) || String(st.zk_user_id) === String(num));
             if (found) {
                 try {
-                    await fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etudiant_id: found.id, filiere: f, semaine: parseInt(s), statut: 'present', module: '', teacher: sessionStorage.getItem('current_user_display') || '' }) });
+                    await fetch(API_BASE + '/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etudiant_id: found.id, filiere: f, semaine: parseInt(s), statut: 'present', module: '', teacher: sessionStorage.getItem('current_user_display') || '' }) });
                 } catch (e) { /* ignore individual failures */ }
             }
         }
@@ -851,7 +853,7 @@ async function handleSignupSubmit(e) {
     }
 
     try {
-        const res = await fetch('/api/signup', {
+        const res = await fetch(API_BASE + '/api/signup', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nom, prenom, num, filiere, email_academique: email, code, deviceId })
         });
@@ -904,7 +906,7 @@ function saveLocalStudent(student) {
         // Best-effort: try to create the same student on the server so registration is shared
         (async () => {
             try {
-                const resp = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId }) });
+                const resp = await fetch(API_BASE + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: assigned.nom, prenom: assigned.prenom, email_academique: assigned.email_academique || assigned.email || '', num: assigned.num, filiere: assigned.filiere, deviceId: assigned.deviceId }) });
                 if (resp.ok) {
                     const j = await resp.json();
                     if (j.student && j.student.id && assigned.num) {
