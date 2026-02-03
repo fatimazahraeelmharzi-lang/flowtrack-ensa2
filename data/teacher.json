@@ -1,0 +1,7 @@
+{
+  "username": "professeur",
+  "password": "ensa2024",
+  "name": "Ahmed Aberqi",
+  "email": "professeur@usmba.ac.ma",
+  "modules": { "isdia": ["Analyse", "Algèbre"], "info": ["Algèbre"] }
+}

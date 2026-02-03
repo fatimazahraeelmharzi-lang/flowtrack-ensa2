@@ -1,0 +1,12 @@
+[
+  {
+    "username": "professeur",
+    "nom": "Aberqi",
+    "prenom": "Ahmed",
+    "email": "professeur@usmba.ac.ma",
+    "modules": {
+      "isdia": ["Analyse", "Algèbre"],
+      "info": ["Algèbre"]
+    }
+  }
+]

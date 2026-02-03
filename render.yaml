@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: flowtrack-ensa2
+    env: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+      - key: TEACHER_USERNAME
+      - key: TEACHER_PASSWORD
+
+databases:
+  - name: flowtrack-db
+    engine: postgres
+    plan: free
+    version: "14"

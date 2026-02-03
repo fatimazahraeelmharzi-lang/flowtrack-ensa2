@@ -3,6 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
+// Read teacher credentials from data/teacher.json (optional) or from env vars
+const teacherConfigPath = path.join(__dirname, 'data', 'teacher.json');
+let teacherCreds = { username: 'professeur', password: 'ensa2024', name: 'Ahmed Aberqi', email: 'professeur@usmba.ac.ma', modules: null };
+try {
+    if (fs.existsSync(teacherConfigPath)) {
+        const tc = JSON.parse(fs.readFileSync(teacherConfigPath, 'utf8'));
+        teacherCreds = Object.assign(teacherCreds, tc || {});
+    }
+    // allow env overrides
+    if (process.env.TEACHER_USERNAME) teacherCreds.username = process.env.TEACHER_USERNAME;
+    if (process.env.TEACHER_PASSWORD) teacherCreds.password = process.env.TEACHER_PASSWORD;
+} catch (e) { console.warn('Failed to read teacher config:', e.message); }
 // Optional: use PG if DATABASE_URL is provided
 let pgClient = null;
 if (process.env.DATABASE_URL) {
@@ -37,14 +49,17 @@ if (process.env.DATABASE_URL) {
                     await pgClient.query("INSERT INTO roles(libelle) VALUES($1) ON CONFLICT (libelle) DO NOTHING", ['teacher']);
 
                     // Create default teacher account if not exists
-                    const res = await pgClient.query("SELECT id_user FROM utilisateurs WHERE username=$1", ['professeur']);
+                    const res = await pgClient.query("SELECT id_user FROM utilisateurs WHERE username=$1", [teacherCreds.username]);
                     if (res.rowCount === 0) {
-                        const hash = await bcrypt.hash('ensa2024', 10);
+                        const hash = await bcrypt.hash(teacherCreds.password || 'ensa2024', 10);
                         // get teacher role id
                         const r = await pgClient.query("SELECT id_role FROM roles WHERE libelle=$1", ['teacher']);
                         const roleId = r.rows[0] ? r.rows[0].id_role : null;
-                        await pgClient.query(`INSERT INTO utilisateurs(username, password_hash, nom, prenom, email_academique, id_role) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, ['professeur', hash, 'Ahmed', 'Aberqi', 'professeur@usmba.ac.ma', roleId]);
-                        console.log('Default teacher account ensured (username: professeur / password: ensa2024)');
+                        const nameParts = (teacherCreds.name || '').split(' ');
+                        const nom = nameParts[0] || (teacherCreds.name || 'Prof');
+                        const prenom = nameParts.slice(1).join(' ') || '';
+                        await pgClient.query(`INSERT INTO utilisateurs(username, password_hash, nom, prenom, email_academique, id_role) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, [teacherCreds.username, hash, nom, prenom, teacherCreds.email || 'professeur@usmba.ac.ma', roleId]);
+                        console.log(`Default teacher account ensured (username: ${teacherCreds.username})`);
                     }
                 } catch (e) { console.error('Error during PG setup:', e); }
             })
@@ -125,10 +140,17 @@ async function handleApiSignup(req, res) {
                     return;
                 }
 
+                // store password/code as hashed value when provided
+                let passwordHash = null;
+                if (payload.code) {
+                    const bcrypt = require('bcrypt');
+                    try { passwordHash = await bcrypt.hash(payload.code, 10); } catch (e) { passwordHash = null; }
+                }
+
                 const insertUser = await pgClient.query(
-                    `INSERT INTO utilisateurs(zk_user_id, nom, prenom, email_academique, id_role, id_groupe)
-                     VALUES($1,$2,$3,$4,$5,$6) RETURNING id_user, nom, prenom, email_academique, zk_user_id`,
-                    [num || deviceId || null, nom, prenom, email_academique, roleId, groupId]
+                    `INSERT INTO utilisateurs(zk_user_id, nom, prenom, email_academique, id_role, id_groupe, password_hash)
+                     VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id_user, nom, prenom, email_academique, zk_user_id`,
+                    [num || deviceId || null, nom, prenom, email_academique, roleId, groupId, passwordHash]
                 );
                 await pgClient.query('COMMIT');
 
@@ -141,7 +163,7 @@ async function handleApiSignup(req, res) {
             }
         }
 
-        // Fallback: save to local JSON file
+        // Fallback: save to local JSON file (include plain code so students can login locally)
         const students = JSON.parse(fs.readFileSync(studentsFile));
         const exists = students.find(s => s.email_academique === email_academique || (deviceId && s.deviceId === deviceId));
         if (exists) {
@@ -149,7 +171,7 @@ async function handleApiSignup(req, res) {
             res.end(JSON.stringify({ ok: true, message: 'Account already exists' }));
             return;
         }
-        const newStudent = { id: Date.now(), nom, prenom, email_academique, num: num || null, filiere: filiere || null, deviceId: deviceId || null };
+        const newStudent = { id: Date.now(), nom, prenom, email_academique, num: num || null, filiere: filiere || null, deviceId: deviceId || null, code: payload.code || null };
         students.push(newStudent);
         fs.writeFileSync(studentsFile, JSON.stringify(students, null, 2));
 
@@ -234,9 +256,9 @@ async function handleApiLogin(req, res) {
             sessionSafeResponse(res, 200, { ok: true, id_user: u.id_user, username: u.username, name: (u.nom + ' ' + u.prenom).trim(), modules });
             return;
         }
-        // Fallback: accept local hardcoded user 'professeur' with password 'ensa2024'
-        if (username === 'professeur' && password === 'ensa2024') {
-            sessionSafeResponse(res, 200, { ok: true, username: 'professeur', name: 'Ahmed Aberqi', modules: { isdia: ['Analyse', 'Algèbre'] } });
+        // Fallback: accept local teacher credentials configured in data/teacher.json or env
+        if (username === teacherCreds.username && password === teacherCreds.password) {
+            sessionSafeResponse(res, 200, { ok: true, username: teacherCreds.username, name: teacherCreds.name || teacherCreds.username, modules: teacherCreds.modules || { isdia: ['Analyse', 'Algèbre'] } });
             return;
         }
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -404,6 +426,7 @@ const server = http.createServer((req, res) => {
     serveStatic(filePath, res);
 });
 
-server.listen(3005, () => {
-    console.log('Server running at http://localhost:3005');
+const PORT = process.env.PORT || 3005;
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
 });
