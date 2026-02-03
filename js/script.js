@@ -478,6 +478,18 @@ function resetData() {
             const key = `${filiere}_${semaine}_${student.num}`;
             delete donnees.absences[key];
         });
+        // Persister la suppression
+        try {
+            const currentUser = sessionStorage.getItem('current_user');
+            if (currentUser) {
+                localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
+            }
+            // Mettre à jour les copies de session et globale
+            sessionStorage.setItem('donnees', JSON.stringify(donnees));
+            localStorage.setItem('donnees_global', JSON.stringify(donnees));
+            window.dispatchEvent(new Event('donneesUpdated'));
+        } catch (e) { console.error('Erreur lors de la persistence après reset', e); }
+
         updateTableau();
     }
 }
