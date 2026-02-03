@@ -11,11 +11,16 @@
   ],
   "license": "MIT",
   "scripts": {
-    "start": "python3 -m http.server 8000",
-    "dev": "python3 -m http.server 3000"
+    "start": "node server.js",
+    "start:static": "python3 -m http.server 8000",
+    "dev": "node server.js"
   },
   "engines": {
-    "python": ">=3.6"
+    "node": ">=14"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.0",
+    "pg": "^8.11.0"
   },
   "repository": {
     "type": "git",

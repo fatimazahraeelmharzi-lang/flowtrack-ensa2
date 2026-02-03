@@ -13,12 +13,19 @@ CREATE TABLE groupes (
 CREATE TABLE utilisateurs (
     id_user SERIAL PRIMARY KEY,
     zk_user_id INT UNIQUE,
+    username VARCHAR(100) UNIQUE,
+    password_hash TEXT,
     nom VARCHAR(100) NOT NULL,
     prenom VARCHAR(100) NOT NULL,
     email_academique VARCHAR(150) UNIQUE,
     id_role INT REFERENCES roles(id_role),
     id_groupe INT REFERENCES groupes(id_groupe)
 );
+
+-- Indexes to enforce uniqueness and speed lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_utilisateurs_email ON utilisateurs(email_academique);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_utilisateurs_zk ON utilisateurs(zk_user_id);
+
 
 CREATE TABLE matieres (
     id_matiere SERIAL PRIMARY KEY,
@@ -45,3 +52,18 @@ CREATE TABLE logs_pointage (
 
 -- Index pour accélérer les recherches par date
 CREATE INDEX idx_logs_timestamp ON logs_pointage(date_heure_pointage);
+
+-- Table de présence (semaine + filière) : évite doublon par (etudiant, filiere, semaine)
+CREATE TABLE IF NOT EXISTS presences (
+    id_presence SERIAL PRIMARY KEY,
+    etudiant_id INT REFERENCES utilisateurs(id_user) ON DELETE CASCADE,
+    filiere VARCHAR(100) NOT NULL,
+    semaine INT NOT NULL,
+    statut VARCHAR(20) CHECK (statut IN ('present','absent','non_renseigne')) DEFAULT 'non_renseigne',
+    module VARCHAR(200),
+    teacher VARCHAR(200),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (etudiant_id, filiere, semaine)
+);
+
+CREATE INDEX IF NOT EXISTS idx_presences_filiere_semaine ON presences(filiere, semaine);

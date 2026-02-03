@@ -100,6 +100,23 @@ async function loadData() {
             }
         }
 
+        // If server API available, try to fetch centralized presences and overwrite local map
+        try {
+            const presResp = await fetch('/api/presences');
+            if (presResp.ok) {
+                const rows = await presResp.json();
+                const map = { absences: {} };
+                rows.forEach(r => {
+                    // r.id is etudiant_id as returned by server
+                    const key = `${r.filiere}_${r.semaine}_${r.id}`;
+                    map.absences[key] = { statut: r.statut, module: r.module || undefined, teacher: r.teacher || undefined };
+                });
+                // merge: server data preferred
+                donnees = map;
+            }
+        } catch (e) { /* ignore if server unreachable */ }
+
+
         // Exposer globalement
         window.donnees = donnees;
 
@@ -215,45 +232,33 @@ function initializeWeeks() {
 /**
  * Gérer la connexion de l'utilisateur
  */
-function handleLogin(e) {
+async function handleLogin(e) {
     e.preventDefault();
-
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
     const errorMessage = document.getElementById('errorMessage');
 
-    console.log('Tentative de connexion:', username, password);
-    console.log('Utilisateurs disponibles:', Object.keys(users));
+    try {
+        const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            errorMessage.textContent = data.error || 'Nom d\'utilisateur ou mot de passe incorrect';
+            errorMessage.style.display = 'block';
+            return;
+        }
+        // success
+        errorMessage.style.display = 'none';
+        sessionStorage.setItem('user_logged_in', 'true');
+        sessionStorage.setItem('current_user', data.username || username);
+        sessionStorage.setItem('current_user_display', data.name || username);
+        sessionStorage.setItem('current_user_modules', JSON.stringify(data.modules || {}));
 
-    // Vérifier les identifiants
-    if (!users[username]) {
-        console.log('Utilisateur non trouvé:', username);
-        errorMessage.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
+        setTimeout(() => { window.location.href = 'gestion.html'; }, 300);
+    } catch (e) {
+        console.error('Login failed', e);
+        errorMessage.textContent = 'Erreur de connexion';
         errorMessage.style.display = 'block';
-        return;
     }
-
-    if (users[username].password !== password) {
-        console.log('Mot de passe incorrect pour:', username);
-        errorMessage.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
-        errorMessage.style.display = 'block';
-        return;
-    }
-
-    console.log('Connexion réussie pour:', username);
-
-    // Authentification réussie
-    errorMessage.style.display = 'none';
-    sessionStorage.setItem('user_logged_in', 'true');
-    sessionStorage.setItem('current_user', username);
-    // store display name and modules mapping for this user
-    sessionStorage.setItem('current_user_display', users[username].name || username);
-    sessionStorage.setItem('current_user_modules', JSON.stringify(users[username].modules || {}));
-
-    // Redirection après 500ms
-    setTimeout(() => {
-        window.location.href = 'gestion.html';
-    }, 500);
 }
 
 /**
@@ -338,17 +343,27 @@ function loadStudents() {
  * Récupérer la liste d'étudiants pour une filière en priorisant les inscriptions
  * (localStorage / API) puis en complétant avec les listes statiques pour tests.
  */
-function getRegisteredStudents(filiere) {
+async function getRegisteredStudents(filiere) {
+    // If teacher logged in and API available, fetch from server
+    try {
+        const resp = await fetch(`/api/students?filiere=${encodeURIComponent(filiere || '')}`);
+        if (resp.ok) {
+            const rows = await resp.json();
+            // map to expected format: include server id as 'id'
+            return rows.map(r => ({ id: r.id, num: r.num || r.zk_user_id || r.num, nom: (r.nom||'').toUpperCase(), prenom: r.prenom }));
+        }
+    } catch (e) {
+        console.warn('API students unreachable, falling back to local_storage', e);
+    }
     const local = JSON.parse(localStorage.getItem('local_students') || '[]');
-    const localForF = local.filter(s => s.filiere && s.filiere.toLowerCase() === filiere.toLowerCase());
-    // return students in expected format
-    return localForF.map(s => ({ num: s.num, nom: (s.nom||'').toUpperCase(), prenom: s.prenom }));
+    const localForF = local.filter(s => s.filiere && s.filiere.toLowerCase() === (filiere || '').toLowerCase());
+    return localForF.map(s => ({ id: s.id || (s.num ? 'local-' + s.num : undefined), num: s.num, nom: (s.nom||'').toUpperCase(), prenom: s.prenom }));
 }
 
 /**
  * Mettre à jour le tableau des absences
  */
-function updateTableau() {
+async function updateTableau() {
     const filiere = document.getElementById('filiereSelect').value;
     const semaine = document.getElementById('semaineSelect').value;
     const tableContainer = document.getElementById('tableContainer');
@@ -368,12 +383,18 @@ function updateTableau() {
     const tableBody = document.getElementById('tableBody');
     tableBody.innerHTML = '';
 
-    const students = getRegisteredStudents(filiere);
+    const students = await getRegisteredStudents(filiere);
     students.forEach(student => {
         const row = document.createElement('tr');
-        const key = `${filiere}_${semaine}_${student.num}`;
-        const raw = donnees.absences[key];
+        if (student.id) row.dataset.studentId = student.id;
+        const keyById = student.id ? `${filiere}_${semaine}_${student.id}` : null;
+        const keyByNum = `${filiere}_${semaine}_${student.num}`;
+        let raw = null;
+        if (keyById && donnees.absences[keyById]) raw = donnees.absences[keyById];
+        else if (donnees.absences[keyByNum]) raw = donnees.absences[keyByNum];
         const status = (raw && typeof raw === 'string') ? raw : (raw && raw.statut ? raw.statut : '');
+
+        const idForClick = (student.id !== undefined && student.id !== null) ? student.id : student.num;
 
         row.innerHTML = `
             <td class="numero-col">${String(student.num).padStart(2, '0')}</td>
@@ -382,17 +403,17 @@ function updateTableau() {
             <td>
                 <div class="status-buttons">
                     <button class="status-btn ${status === 'present' ? 'present' : ''}" 
-                            onclick="setStatus('${filiere}', ${semaine}, ${student.num}, 'present')">
+                            onclick="setStatus('${filiere}', ${semaine}, ${JSON.stringify(idForClick)}, 'present')">
                         ✓ Présent
                     </button>
                     <button class="status-btn ${status === 'absent' ? 'absent' : ''}" 
-                            onclick="setStatus('${filiere}', ${semaine}, ${student.num}, 'absent')">
+                            onclick="setStatus('${filiere}', ${semaine}, ${JSON.stringify(idForClick)}, 'absent')">
                         ✗ Absent
                     </button>
                 </div>
             </td>
             <td>
-                <button class="btn-detail btn-secondary" onclick="openDetail('${filiere}', ${student.num})">Détail</button>
+                <button class="btn-detail btn-secondary" onclick="openDetail('${filiere}', ${JSON.stringify(idForClick)})">Détail</button>
             </td>
         `;
 
@@ -406,23 +427,38 @@ function updateTableau() {
 /**
  * Définir le statut d'un étudiant
  */
-function setStatus(filiere, semaine, num, status) {
-    const key = `${filiere}_${semaine}_${num}`;
-    // Determine module and teacher from teacher's modules for this filiere
+async function setStatus(filiere, semaine, idOrNum, status) {
     const modules = getTeacherModules(filiere);
     const moduleName = (modules && modules.length) ? modules[0] : '';
     const teacherName = sessionStorage.getItem('current_user_display') || sessionStorage.getItem('current_user') || '';
 
-    // Preserve existing structure if it was a string (backward compatibility)
+    // Determine etudiant_id if idOrNum is numeric server id
+    let etudiantId = null;
+    if (typeof idOrNum === 'number') etudiantId = idOrNum;
+    else if (!isNaN(parseInt(idOrNum))) etudiantId = parseInt(idOrNum);
+
+    // If etudiantId found, try to persist on server
+    if (etudiantId) {
+        try {
+            await fetch('/api/presence', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ etudiant_id: etudiantId, filiere, semaine: parseInt(semaine), statut: status, module: moduleName || null, teacher: teacherName || null })
+            });
+        } catch (e) {
+            console.warn('Failed to persist to server', e);
+        }
+    }
+
+    // Build a key for local storage mapping and update local cache
+    const key = `${filiere}_${semaine}_${(typeof idOrNum === 'number' ? idOrNum : idOrNum)}`;
     const existing = donnees.absences[key];
     if (existing && typeof existing === 'object') {
-        // update fields
         existing.statut = status;
         if (moduleName) existing.module = moduleName;
         if (teacherName) existing.teacher = teacherName;
         donnees.absences[key] = existing;
     } else {
-        // write as object
         donnees.absences[key] = { statut: status, module: moduleName || undefined, teacher: teacherName || undefined };
     }
 
@@ -531,7 +567,7 @@ function importDAT() {
 /**
  * Parser le contenu du fichier .dat
  */
-function parseDATFile(content, filiere, semaine) {
+async function parseDATFile(content, filiere, semaine) {
     const lines = content.split('\n');
     let importedCount = 0;
     let invalidCount = 0;
@@ -585,7 +621,7 @@ function parseDATFile(content, filiere, semaine) {
     // Note: do NOT mark all other students as 'absent' automatically here.
     // Absence should be an explicit action; leaving keys unset means "non renseigné".
 
-    // Persist updates
+    // Persist updates locally
     const currentUser = sessionStorage.getItem('current_user');
     if (currentUser) localStorage.setItem('donnees_' + currentUser, JSON.stringify(donnees));
     sessionStorage.setItem('donnees', JSON.stringify(donnees));
@@ -593,6 +629,25 @@ function parseDATFile(content, filiere, semaine) {
     window.dispatchEvent(new Event('donneesUpdated'));
     updateTableau();
     if (typeof updateStatistics === 'function') updateStatistics();
+
+    // Try to persist imported presences to server (best-effort)
+    try {
+        const studentsOnServerResp = await fetch(`/api/students?filiere=${encodeURIComponent(filiere)}`);
+        let serverStudents = [];
+        if (studentsOnServerResp.ok) serverStudents = await studentsOnServerResp.json();
+        for (const key of markedThisImport) {
+            const parts = key.split('_');
+            if (parts.length !== 3) continue;
+            const [f, s, num] = parts;
+            // find server student by num (or fallback by deviceId or email)
+            const found = serverStudents.find(st => String(st.num) === String(num) || String(st.zk_user_id) === String(num));
+            if (found) {
+                try {
+                    await fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etudiant_id: found.id, filiere: f, semaine: parseInt(s), statut: 'present', module: '', teacher: sessionStorage.getItem('current_user_display') || '' }) });
+                } catch (e) { /* ignore individual failures */ }
+            }
+        }
+    } catch (e) { /* ignore network errors */ }
 
     alert(`Import terminé: ${importedCount} présences importées, ${invalidCount} enregistrements invalides ignorés.`);
 }
